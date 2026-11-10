@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { preparePhoto } from "@/lib/images/resize";
 import { createLimiter } from "@/lib/limiter";
 import { createClient } from "@/lib/supabase/client";
+import { CameraCapture, canUseInAppCamera, type CameraLatest } from "./camera-capture";
 import { cn } from "@/lib/utils";
 
 type Stage = "preparing" | "uploading" | "tagging" | "done" | "not_clothing" | "failed";
@@ -36,6 +37,7 @@ export function ClosetSession({ userId }: { userId: string }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const cameraInput = useRef<HTMLInputElement>(null);
   const libraryInput = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const previews = useRef<string[]>([]);
 
   const patch = useCallback((key: string, changes: Partial<Entry>) => {
@@ -110,7 +112,7 @@ export function ClosetSession({ userId }: { userId: string }) {
   );
 
   const addFiles = useCallback(
-    (files: FileList | null) => {
+    (files: FileList | File[] | null) => {
       if (!files?.length) return;
       const added: Entry[] = Array.from(files)
         .filter((file) => file.type.startsWith("image/") || file.type === "")
@@ -160,21 +162,50 @@ export function ClosetSession({ userId }: { userId: string }) {
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
+  const openCamera = () => {
+    // The in-app camera stays open between shots; otherwise use the phone's camera app.
+    if (canUseInAppCamera()) setCameraOpen(true);
+    else cameraInput.current?.click();
+  };
+
+  const closeCamera = useCallback(() => setCameraOpen(false), []);
+  const captureFromCamera = useCallback((file: File) => addFiles([file]), [addFiles]);
+
+  const newest = entries[0];
+  const latest: CameraLatest = newest
+    ? {
+        previewUrl: newest.previewUrl,
+        state: BUSY.includes(newest.stage) ? "working" : newest.stage === "done" ? "done" : "problem",
+      }
+    : null;
+
   const doneCount = entries.filter((e) => e.stage === "done").length;
   const reviewCount = entries.filter((e) => e.stage === "not_clothing" || e.stage === "failed").length;
   const workingCount = entries.filter((e) => BUSY.includes(e.stage)).length;
 
   return (
     <div className="flex flex-col gap-6">
+      {cameraOpen && (
+        <CameraCapture
+          onCapture={captureFromCamera}
+          onClose={closeCamera}
+          onFallback={() => {
+            setCameraOpen(false);
+            cameraInput.current?.click();
+          }}
+          addedCount={entries.length}
+          latest={latest}
+        />
+      )}
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
-          onClick={() => cameraInput.current?.click()}
+          onClick={openCamera}
           className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-3xl bg-accent px-4 text-accent-foreground transition-transform active:scale-[0.98]"
         >
           <Camera className="size-7" strokeWidth={1.75} />
           <span className="text-sm font-medium">
-            {entries.length ? "Take next photo" : "Take photo"}
+            {entries.length ? "Take more photos" : "Take photos"}
           </span>
         </button>
         <button
@@ -216,8 +247,9 @@ export function ClosetSession({ userId }: { userId: string }) {
 
       {entries.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          One item per photo, laid flat or hung against a plain wall, in good light. You can keep
-          snapping while earlier photos upload and get tagged.
+          One item per photo, flat on a plain surface or hung on a wall, in daylight. Keep other
+          clothes out of the frame, and stand to one side so your shadow isn&apos;t on it. The camera
+          stays open, so just keep tapping: photos upload and get tagged in the background.
         </p>
       ) : (
         <section aria-label="This session" className="flex flex-col gap-3">
