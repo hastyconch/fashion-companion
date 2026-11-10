@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,10 @@ export default async function MePage() {
   const supabase = await createClient();
   const [{ data: claims }, { data: profile }] = await Promise.all([
     supabase.auth.getClaims(),
-    supabase.from("profiles").select("display_name").maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("display_name, style_keywords, style_completed_at, city")
+      .maybeSingle(),
   ]);
 
   const email = typeof claims?.claims.email === "string" ? claims.claims.email : null;
@@ -24,9 +29,32 @@ export default async function MePage() {
           <dt className="text-sm text-muted-foreground">Email</dt>
           <dd className="truncate text-sm">{email ?? "—"}</dd>
         </div>
+        <div>
+          <dt className="sr-only">Style profile</dt>
+          <dd>
+            <Link
+              href="/style"
+              className="flex min-h-14 items-center justify-between gap-4 px-5 py-4 hover:bg-muted"
+            >
+              <span aria-hidden className="text-sm text-muted-foreground">
+                Style profile
+              </span>
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                <span className="truncate">
+                  {profile?.style_completed_at
+                    ? profile.style_keywords?.length
+                      ? profile.style_keywords.join(" · ")
+                      : "Done"
+                    : "Not set up yet"}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </span>
+            </Link>
+          </dd>
+        </div>
         <div className="flex items-center justify-between gap-4 px-5 py-4">
-          <dt className="text-sm text-muted-foreground">Style profile</dt>
-          <dd className="text-sm text-muted-foreground">Coming soon</dd>
+          <dt className="text-sm text-muted-foreground">Weather location</dt>
+          <dd className="truncate text-sm">{profile?.city ?? "Not set"}</dd>
         </div>
       </dl>
       <ChangePassword />

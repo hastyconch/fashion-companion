@@ -1,18 +1,17 @@
 import "server-only";
 
-import type Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 
 import { ItemTagsSchema, type ItemTags } from "@/lib/items/tags";
 import { COLOR_NAMES } from "@/lib/items/vocabulary";
-import { MODEL, REFUSAL_FALLBACK_BETA, getAnthropic } from "./client";
+import { AiError, MODEL, REFUSAL_FALLBACK_BETA, getAnthropic, type AiClient } from "./client";
 
 export type TagOutcome =
   | { kind: "tagged"; tags: ItemTags }
   | { kind: "not_clothing" }
   | { kind: "refused" };
 
-export class TaggingError extends Error {
+export class TaggingError extends AiError {
   constructor(message: string) {
     super(message);
     this.name = "TaggingError";
@@ -33,8 +32,7 @@ const SYSTEM_PROMPT = `You catalog clothes for a personal wardrobe app. Each req
 - brand: only when a logo or label is clearly legible; otherwise null.
 - material: your best guess from the texture and drape.`;
 
-/** The slice of the SDK this module uses, so tests can pass a fake. */
-export type TaggerClient = Pick<Anthropic, "beta">;
+export type TaggerClient = AiClient;
 
 /**
  * Tags one clothing photo. `imageUrl` must be reachable by the Anthropic API

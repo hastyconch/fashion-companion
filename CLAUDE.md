@@ -30,6 +30,9 @@ Product plan and milestones: `docs/PLAN.md`. Setup: `README.md`.
   signed URL.
 - The tag vocabulary in `src/lib/items/vocabulary.ts` is mirrored by CHECK constraints in
   the items migration. Change both together.
+- Style quiz answers live in `profiles.preferences` and are validated by `PreferencesSchema`
+  (`src/lib/profile/preferences.ts`). The AI-written brief is `profiles.style_memo`; M4's outfit
+  suggestions should read both.
 - **Never trust IDs from the model.** Validate AI output with Zod and check that every
   item ID exists and belongs to the user.
 - Mobile first: 44px touch targets, `text-base` inputs (stops iOS zoom), and safe-area

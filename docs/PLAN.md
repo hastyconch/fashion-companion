@@ -138,7 +138,9 @@ Each milestone ends with a PR for you to review and test on your phone.
   *Done when:* you can add 20 real items in under 10 minutes.
 - **M2 Duplicates**: compute pHash client-side, SQL candidate query, `checkDuplicate`, 3-choice UX.
   *Done when:* re-photographing an owned item is flagged, and a different shirt of the same color is not.
-- **M3 Profile & onboarding**: style quiz (visual choices, not long forms), location, trend appetite.
+- **M3 Profile & onboarding** ✅ built: an 8-question style quiz at `/style` (name, occasions, styles, fit,
+  colors, comfort and adventurousness, notes, location), an AI-written style brief you can edit, and weather
+  location via Open-Meteo geocoding (rounded to ~1 km). Was: style quiz (visual choices, not long forms), location, trend appetite.
 - **M4 Today**: Open-Meteo forecast, `suggestOutfits`, swap-one-piece, feedback, wear log, laundry status,
   `refreshStyleMemo`. *Done when:* you'd actually follow a suggestion on 3 of 5 mornings.
 - **M5 Trend brief**: Cloudflare Cron Trigger (weekly) → route handler protected by `CRON_SECRET` → `weeklyTrendBrief`;

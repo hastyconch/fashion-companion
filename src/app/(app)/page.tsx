@@ -10,17 +10,28 @@ import { cn } from "@/lib/utils";
 /** Enough pieces for the stylist to start combining outfits. */
 const CLOSET_GOAL = 10;
 
+type StepView = {
+  title: string;
+  body: string;
+  done: boolean;
+  href?: string;
+  cta?: string;
+  progress?: number;
+  quote?: string | null;
+};
+
 export default async function TodayPage() {
   const supabase = await createClient();
   const [{ data: profile }, itemCount] = await Promise.all([
-    supabase.from("profiles").select("display_name").maybeSingle(),
+    supabase.from("profiles").select("display_name, style_memo, style_completed_at").maybeSingle(),
     countItems(supabase),
   ]);
 
   const name = profile?.display_name?.trim();
   const closetReady = itemCount >= CLOSET_GOAL;
+  const styleDone = Boolean(profile?.style_completed_at);
 
-  const steps = [
+  const steps: StepView[] = [
     {
       title: "Add your clothes",
       body: closetReady
@@ -35,15 +46,24 @@ export default async function TodayPage() {
     },
     {
       title: "Tell us your style",
-      body: "A short quiz about how you dress, what you love and what you avoid.",
-      done: false,
+      body: styleDone
+        ? "Your stylist's brief:"
+        : "Eight quick questions about how you dress, what you love and what you avoid. About two minutes.",
+      href: "/style",
+      cta: styleDone ? "Edit your style" : "Take the style quiz",
+      done: styleDone,
+      quote: styleDone ? profile?.style_memo : null,
     },
     {
       title: "Get dressed",
-      body: "Daily outfits built from your closet, the weather and your plans.",
+      body: "Daily outfits built from your closet, the weather and your plans. Coming next.",
       done: false,
     },
   ];
+
+  // Highlight the first unfinished step that can be done now.
+  const current = steps.findIndex((s, i) => !s.done && i < 2);
+  const ready = closetReady && styleDone;
 
   return (
     <div className="flex flex-col gap-10">
@@ -51,26 +71,29 @@ export default async function TodayPage() {
         eyebrow="Today"
         title={name ? `Welcome, ${name}.` : "Welcome."}
         description={
-          closetReady
-            ? "Your closet is ready. Style profiles and daily outfits are coming next."
-            : "Your stylist needs to see your closet first. Here's how to get your first outfit."
+          ready
+            ? "Your closet and style profile are set. Daily outfits are coming next."
+            : "Two things to set up, in any order, and your stylist can start putting outfits together."
         }
       />
       <ol className="flex flex-col gap-3">
         {steps.map((step, index) => {
-          const current = index === 0;
+          const highlighted = index === current;
+          const actionable = Boolean(step.href);
           return (
             <li
               key={step.title}
               className={cn(
                 "flex gap-4 rounded-3xl border bg-surface p-5",
-                !current && "opacity-60",
+                !actionable && "opacity-60",
               )}
             >
               <span
                 className={cn(
                   "flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-medium",
-                  current ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground",
+                  highlighted || step.done
+                    ? "bg-accent text-accent-foreground"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
                 {step.done ? <Check className="size-4" aria-label="Done" /> : index + 1}
@@ -80,7 +103,12 @@ export default async function TodayPage() {
                   <h2 className="font-medium">{step.title}</h2>
                   <p className="text-sm text-muted-foreground">{step.body}</p>
                 </div>
-                {current && step.progress !== undefined && step.progress > 0 && !step.done && (
+                {step.quote && (
+                  <blockquote className="line-clamp-4 border-l-2 border-accent pl-3 font-display text-base leading-snug">
+                    {step.quote}
+                  </blockquote>
+                )}
+                {step.progress !== undefined && step.progress > 0 && !step.done && (
                   <div
                     className="h-1.5 overflow-hidden rounded-full bg-muted"
                     role="progressbar"
@@ -95,8 +123,12 @@ export default async function TodayPage() {
                     />
                   </div>
                 )}
-                {current && step.href && (
-                  <Button asChild className="self-start" variant={step.done ? "outline" : "default"}>
+                {step.href && (
+                  <Button
+                    asChild
+                    className="self-start"
+                    variant={highlighted ? "default" : "outline"}
+                  >
                     <Link href={step.href}>{step.cta}</Link>
                   </Button>
                 )}
