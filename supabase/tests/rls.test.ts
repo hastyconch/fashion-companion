@@ -317,3 +317,50 @@ describe("closet photo storage", () => {
     expect(result.affectedRows).toBe(0);
   });
 });
+
+describe("style profile", () => {
+  it("lets users save their own answers, summary and location", async () => {
+    const result = await as(ALICE, () =>
+      db.query(
+        `update public.profiles
+           set preferences = '{"vibes":["minimalist"]}', style_memo = 'Clean lines.',
+               style_keywords = '{minimalist}', city = 'Lisbon', latitude = 38.72,
+               longitude = -9.14, timezone = 'Europe/Lisbon', style_completed_at = now()
+         where id = $1`,
+        [ALICE],
+      ),
+    );
+    expect(result.affectedRows).toBe(1);
+  });
+
+  it("silently ignores changes to someone else's style profile", async () => {
+    const result = await as(ALICE, () =>
+      db.query("update public.profiles set style_memo = 'hacked' where id = $1", [BOB]),
+    );
+    expect(result.affectedRows).toBe(0);
+  });
+
+  it("rejects non-object or oversized answers", async () => {
+    await expect(
+      as(ALICE, () =>
+        db.query("update public.profiles set preferences = '[1,2]' where id = $1", [ALICE]),
+      ),
+    ).rejects.toThrow(/check constraint/);
+    await expect(
+      as(ALICE, () =>
+        db.query(
+          "update public.profiles set preferences = jsonb_build_object('notes', repeat(md5(random()::text), 400)) where id = $1",
+          [ALICE],
+        ),
+      ),
+    ).rejects.toThrow(/check constraint/);
+  });
+
+  it("requires latitude and longitude together", async () => {
+    await expect(
+      as(ALICE, () =>
+        db.query("update public.profiles set latitude = 10, longitude = null where id = $1", [ALICE]),
+      ),
+    ).rejects.toThrow(/profiles_location_pair/);
+  });
+});

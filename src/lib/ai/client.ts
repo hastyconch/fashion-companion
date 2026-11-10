@@ -18,6 +18,17 @@ export class MissingApiKeyError extends Error {
   }
 }
 
+/** Any AI call that didn't produce a usable answer (API error, cut off, malformed). */
+export class AiError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiError";
+  }
+}
+
+/** The slice of the SDK our AI features use, so tests can pass a fake. */
+export type AiClient = Pick<Anthropic, "beta">;
+
 let client: Anthropic | undefined;
 
 /** Shared Anthropic client. Server-only: the key never reaches the browser. */
