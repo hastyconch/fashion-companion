@@ -88,10 +88,12 @@ Connect the repo once and every push to `main` deploys automatically:
 
 To deploy from your own machine instead: `npx wrangler login`, then `npm run deploy`.
 
-**Free-plan limits to know about:** each request gets 10 ms of CPU time and the Worker
-must stay under 3 MB compressed (currently ~2.1 MB). If you ever see error 1102
-("Worker exceeded resource limits"), the Workers Paid plan ($5/month) raises both
-limits.
+**Plan:** this app runs on Workers Paid ($5/month): 10 MB compressed bundle limit
+(currently ~2.5 MB) and generous CPU time per request. On the free plan the limits are
+3 MB and 10 ms of CPU, which the app would likely outgrow.
+
+**Weather:** daily outfits use the free Open-Meteo forecast API (no key; non-commercial
+use only on the free tier, so revisit before a public launch).
 
 ## Scripts
 

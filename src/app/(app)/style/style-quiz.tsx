@@ -37,9 +37,9 @@ export type StyleInitial = {
   completed: boolean;
 };
 
-export function StyleQuiz({ initial }: { initial: StyleInitial }) {
+export function StyleQuiz({ initial, startAt }: { initial: StyleInitial; startAt?: "location" }) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>(initial.completed ? "summary" : "name");
+  const [step, setStep] = useState<Step>(startAt ?? (initial.completed ? "summary" : "name"));
   const [name, setName] = useState(initial.name);
   const [prefs, setPrefs] = useState<Preferences>(initial.preferences);
   const [city, setCity] = useState<string | null>(initial.city);

@@ -7,7 +7,8 @@ import { StyleQuiz } from "./style-quiz";
 
 export const metadata: Metadata = { title: "Your style" };
 
-export default async function StylePage() {
+export default async function StylePage({ searchParams }: PageProps<"/style">) {
+  const { step } = await searchParams;
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
   const userId = claims?.claims.sub;
@@ -29,6 +30,7 @@ export default async function StylePage() {
         keywords: profile?.style_keywords ?? [],
         completed: Boolean(profile?.style_completed_at),
       }}
+      startAt={step === "location" ? "location" : undefined}
     />
   );
 }
