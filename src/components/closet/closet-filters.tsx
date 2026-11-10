@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { SlidersHorizontal, Search, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import type { ClosetFilters } from "@/lib/items/filters";
@@ -22,6 +22,10 @@ export function ClosetFilterBar({ filters }: { filters: ClosetFilters }) {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useState(filters.q);
+  const activeCount = [filters.category, filters.color, filters.season].filter(Boolean).length +
+    (filters.status !== "all" ? 1 : 0);
+  // On phones the chip rows fold away so the clothes stay above the fold.
+  const [open, setOpen] = useState(false);
 
   function setParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -44,17 +48,34 @@ export function ClosetFilterBar({ filters }: { filters: ClosetFilters }) {
 
   return (
     <div className={cn("flex flex-col gap-3 transition-opacity", pending && "opacity-70")}>
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search your closet"
-          aria-label="Search your closet"
-          className="pl-10"
-        />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search your closet"
+            aria-label="Search your closet"
+            className="pl-10"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls="closet-filter-panel"
+          className={cn(
+            "inline-flex h-12 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm transition-colors md:hidden",
+            activeCount > 0 ? "border-primary bg-primary text-primary-foreground" : "bg-surface",
+          )}
+        >
+          <SlidersHorizontal className="size-4" aria-hidden />
+          {activeCount > 0 ? `Filters · ${activeCount}` : "Filters"}
+        </button>
       </div>
+
+      <div id="closet-filter-panel" className={cn("flex-col gap-3", open ? "flex" : "hidden md:flex")}>
 
       <ChipRow label="Category">
         {CATEGORIES.map((c) => (
@@ -105,6 +126,7 @@ export function ClosetFilterBar({ filters }: { filters: ClosetFilters }) {
           </Chip>
         ))}
       </ChipRow>
+      </div>
     </div>
   );
 }
