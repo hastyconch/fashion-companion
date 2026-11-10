@@ -141,7 +141,9 @@ Each milestone ends with a PR for you to review and test on your phone.
 - **M3 Profile & onboarding** ✅ built: an 8-question style quiz at `/style` (name, occasions, styles, fit,
   colors, comfort and adventurousness, notes, location), an AI-written style brief you can edit, and weather
   location via Open-Meteo geocoding (rounded to ~1 km). Was: style quiz (visual choices, not long forms), location, trend appetite.
-- **M4 Today**: Open-Meteo forecast, `suggestOutfits`, swap-one-piece, feedback, wear log, laundry status,
+- **M4 Today** ✅ built: 3 outfits per occasion per day (created on first visit, then reused), weather from
+  Open-Meteo, occasion chips, swap (no AI call), 👍/👎 with reasons fed back into suggestions, "Wearing this"
+  updates wear counts, Looks page. `refreshStyleMemo` deferred: recent reactions go straight into the prompt instead. Was: Open-Meteo forecast, `suggestOutfits`, swap-one-piece, feedback, wear log, laundry status,
   `refreshStyleMemo`. *Done when:* you'd actually follow a suggestion on 3 of 5 mornings.
 - **M5 Trend brief**: Cloudflare Cron Trigger (weekly) → route handler protected by `CRON_SECRET` → `weeklyTrendBrief`;
   Trends page. The same trigger can run a daily query that stops the Supabase free tier pausing after 7 idle days.

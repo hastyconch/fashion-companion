@@ -364,3 +364,80 @@ describe("style profile", () => {
     ).rejects.toThrow(/profiles_location_pair/);
   });
 });
+
+describe("outfits", () => {
+  let aliceOutfit: string;
+  let bobOutfit: string;
+
+  const createOutfit = async () => {
+    const { rows } = await db.query<{ id: string }>(
+      "insert into public.outfits (for_date, occasion, title) values ('2026-11-13', 'everyday', 'Test') returning id",
+    );
+    return rows[0].id;
+  };
+  const addPiece = (outfit: string, item: string) =>
+    db.query("insert into public.outfit_items (outfit_id, item_id) values ($1, $2)", [outfit, item]);
+  const wearCount = async (item: string) =>
+    (await db.query<{ wear_count: number }>("select wear_count from public.items where id = $1", [item]))
+      .rows[0].wear_count;
+
+  beforeAll(async () => {
+    aliceOutfit = await as(ALICE, createOutfit);
+    bobOutfit = await as(BOB, createOutfit);
+    await as(ALICE, () => addPiece(aliceOutfit, ITEM_A));
+  });
+
+  it("only shows users their own outfits and pieces", async () => {
+    const outfits = await as(ALICE, () => db.query<{ id: string }>("select id from public.outfits"));
+    const pieces = await as(BOB, () => db.query("select * from public.outfit_items"));
+    expect(outfits.rows.map((r) => r.id)).toEqual([aliceOutfit]);
+    expect(pieces.rows).toEqual([]);
+  });
+
+  it("won't let a user put someone else's item in their outfit", async () => {
+    await expect(as(ALICE, () => addPiece(aliceOutfit, ITEM_B))).rejects.toThrow(/row-level security/);
+  });
+
+  it("won't let a user add pieces to someone else's outfit", async () => {
+    await expect(as(ALICE, () => addPiece(bobOutfit, ITEM_A))).rejects.toThrow(/row-level security/);
+  });
+
+  it("lets users react to their own outfits only", async () => {
+    const mine = await as(ALICE, () =>
+      db.query("update public.outfits set status = 'liked', feedback_reason = 'Great' where id = $1", [aliceOutfit]),
+    );
+    const theirs = await as(ALICE, () =>
+      db.query("update public.outfits set status = 'disliked' where id = $1", [bobOutfit]),
+    );
+    expect(mine.affectedRows).toBe(1);
+    expect(theirs.affectedRows).toBe(0);
+  });
+
+  it("blocks editing outfit contents after creation", async () => {
+    await expect(
+      as(ALICE, () => db.query("update public.outfits set title = 'Hacked' where id = $1", [aliceOutfit])),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("counts a worn outfit once, and only for its owner", async () => {
+    const before = await wearCount(ITEM_A);
+    const bobTry = await as(BOB, () =>
+      db.query<{ ok: boolean }>("select public.record_outfit_worn($1) as ok", [aliceOutfit]),
+    );
+    expect(bobTry.rows[0].ok).toBe(false);
+    expect(await wearCount(ITEM_A)).toBe(before);
+
+    for (let i = 0; i < 2; i++) {
+      await as(ALICE, () => db.query("select public.record_outfit_worn($1)", [aliceOutfit]));
+    }
+    expect(await wearCount(ITEM_A)).toBe(before + 1);
+    const { rows } = await db.query<{ status: string }>("select status from public.outfits where id = $1", [
+      aliceOutfit,
+    ]);
+    expect(rows[0].status).toBe("worn");
+  });
+
+  it("is unavailable to signed-out visitors", async () => {
+    await expect(as(null, () => db.query("select * from public.outfits"))).rejects.toThrow(/permission denied/);
+  });
+});

@@ -33,7 +33,7 @@ Product plan and milestones: `docs/PLAN.md`. Setup: `README.md`.
 - Style quiz answers live in `profiles.preferences` and are validated by `PreferencesSchema`
   (`src/lib/profile/preferences.ts`). The AI-written brief is `profiles.style_memo`; M4's outfit
   suggestions should read both.
-- **Never trust IDs from the model.** Validate AI output with Zod and check that every
-  item ID exists and belongs to the user.
+- **Never trust IDs from the model.** Give it short refs (`closetForAi` in `src/lib/outfits/closet.ts`),
+  map them back server-side, and run every outfit through `checkOutfit` (`src/lib/outfits/validate.ts`).
 - Mobile first: 44px touch targets, `text-base` inputs (stops iOS zoom), and safe-area
   padding on fixed bars.
