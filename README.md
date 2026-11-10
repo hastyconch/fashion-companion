@@ -6,8 +6,9 @@ works on phone and desktop.
 
 The product plan and milestones are in [`docs/PLAN.md`](docs/PLAN.md).
 
-**Stack:** Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind CSS 4 ·
-Radix/shadcn-style components · Supabase (Postgres + RLS, Auth, Storage) · Vercel.
+**Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · Radix/shadcn-style
+components · Supabase (Postgres + RLS, Auth, Storage) · Cloudflare Workers (via
+[OpenNext](https://opennext.js.org/cloudflare)).
 
 ## First-time setup
 
@@ -25,7 +26,8 @@ Radix/shadcn-style components · Supabase (Postgres + RLS, Auth, Storage) · Ver
    **Confirm signup** templates with `supabase/templates/magic_link.html`. The sign-in
    code (`{{ .Token }}`) is what makes login work inside the installed iPhone app.
 4. **URL configuration** (Authentication → URL Configuration): set the Site URL to your
-   Vercel URL, and add `http://localhost:3000` and your Vercel URL to Redirect URLs.
+   Cloudflare URL (`https://fashion-companion.<your-subdomain>.workers.dev`), and add
+   `http://localhost:3000` and your Cloudflare URL to Redirect URLs.
 5. **Sign up, then lock the door.** Sign in once to create your account, then turn off
    *Allow new users to sign up* (Authentication → Sign In / Providers) until the app is
    ready for other people. Otherwise anyone who finds the URL can create an account and
@@ -51,18 +53,35 @@ npm install
 npm run dev
 ```
 
-### 3. Deploy (Vercel)
+### 3. Deploy (Cloudflare Workers)
 
-Import the GitHub repo in Vercel and add the two `NEXT_PUBLIC_SUPABASE_*` variables.
-Open the deployed URL on your phone: **Share → Add to Home Screen** on iPhone, or
-**Install app** on Android.
+Connect the repo once and every push to `main` deploys automatically:
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repository** →
+   pick `fashion-companion`.
+2. **Build command:** `npx opennextjs-cloudflare build`
+   **Deploy command:** `npx opennextjs-cloudflare deploy`
+3. Add **build variables** `NEXT_PUBLIC_SUPABASE_URL` and
+   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. They're baked in at build time, so they must
+   be *build* variables, not only runtime ones.
+4. Open `https://fashion-companion.<your-subdomain>.workers.dev` on your phone:
+   **Share → Add to Home Screen** on iPhone, **Install app** on Android.
+
+To deploy from your own machine instead: `npx wrangler login`, then `npm run deploy`.
+
+**Free-plan limits to know about:** each request gets 10 ms of CPU time and the Worker
+must stay under 3 MB compressed (currently ~1.7 MB). If you ever see error 1102
+("Worker exceeded resource limits"), the Workers Paid plan ($5/month) raises both
+limits.
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Dev server on http://localhost:3000 |
-| `npm run build` | Production build |
+| `npm run build` | Next.js production build |
+| `npm run preview` | Build for Cloudflare and run it locally in the real Workers runtime |
+| `npm run deploy` | Build and deploy to Cloudflare (needs `wrangler login`) |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Generates Next.js route types, then `tsc --noEmit` |
 | `npm test` | Unit tests + row-level security tests (Postgres in WebAssembly, no Docker) |

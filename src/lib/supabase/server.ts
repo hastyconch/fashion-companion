@@ -9,8 +9,8 @@ import { getSupabaseEnv } from "./env";
  * Create a new one per request; never share it across requests.
  */
 export async function createClient() {
-  // Session handling reads the clock (token expiry), which Next.js forbids
-  // while prerendering. connection() marks everything after it request-time.
+  // Session handling reads the clock (token expiry) and must never be
+  // prerendered or cached. connection() marks everything after it request-time.
   await connection();
   const { url, publishableKey } = getSupabaseEnv();
   const cookieStore = await cookies();

@@ -1,10 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Next.js 16 defaults: static shells prerender, and anything that reads
-  // cookies/session streams in behind a <Suspense> boundary.
-  cacheComponents: true,
-  partialPrefetching: true,
+  // cacheComponents/partialPrefetching stay OFF: on Cloudflare Workers they made
+  // requests hang (Next.js warns its timers don't behave as expected in the
+  // Workers runtime), and the OpenNext adapter doesn't support them yet.
   turbopack: {
     rules: {
       "*.css": {
@@ -34,3 +33,6 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+// Gives `next dev` access to Cloudflare bindings (wrangler.jsonc).
+import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev());

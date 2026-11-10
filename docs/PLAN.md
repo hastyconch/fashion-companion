@@ -47,7 +47,7 @@ Decisions made: **installable web app (Next.js PWA)**, **Supabase**, **Claude bu
 - Add items from a mirror selfie (extract several items from one photo).
 
 **Public launch (v3)**: per-user AI quotas and rate limits, billing, privacy policy, account deletion and export,
-image moderation, and commercial plans. Vercel Hobby and Open-Meteo's free tier are **non-commercial only**, and the
+image moderation, and commercial plans. Open-Meteo's free tier is **non-commercial only** (Cloudflare's free plan allows commercial use), and the
 Supabase free tier pauses after a week of inactivity.
 
 ---
@@ -71,10 +71,10 @@ Supabase free tier pauses after a week of inactivity.
 Browser/PWA (Next.js App Router, React, Tailwind, shadcn/ui; service worker in M6)
    │  camera → canvas resize (≤1600px WebP + 400px thumb; re-encoding strips EXIF GPS)
    ▼
-Next.js route handlers / server actions (Vercel)  ── Anthropic SDK (server only, key never in browser)
+Next.js route handlers / server actions (Cloudflare Workers via OpenNext)  ── Anthropic SDK (server only, key never in browser)
    │                                              ── Open-Meteo (weather)
    ▼
-Supabase: Postgres (+RLS) · Auth (email code) · Storage (private bucket, signed URLs) · Vercel Cron → weekly trend job
+Supabase: Postgres (+RLS) · Auth (email code) · Storage (private bucket, signed URLs) · Cloudflare Cron Trigger → weekly trend job
 ```
 
 **Build it multi-user from day one** (`user_id` on every row + row-level security on all user tables), even with one
@@ -112,7 +112,8 @@ All use `@anthropic-ai/sdk` with **`claude-opus-5-5`** and structured output via
 - Tagging: ~$0.02/item → 150-item initial closet ≈ **$3 one-time**
 - Suggestions: ~$0.04–0.08 each with a cached closet → 3/day ≈ **$4–7/mo**
 - Trend brief: ~$0.30/week + web search fees ≈ **$1.5/mo**
-- Vercel Hobby + Supabase free + Open-Meteo free = $0 → **~$6–10/mo total, within budget.**
+- Cloudflare Workers free + Supabase free + Open-Meteo free = $0 → **~$6–10/mo total, within budget.**
+  If server rendering hits the free plan's 10 ms CPU limit, Workers Paid is $5/mo (still within budget).
 
 If you open it to other people, per-user cost is the number to watch. Moving `tagItem`/`checkDuplicate` to a cheaper
 model is your decision to make then, based on measured quality.
@@ -123,10 +124,10 @@ model is your decision to make then, based on measured quality.
 
 Each milestone ends with a PR for you to review and test on your phone.
 
-- **M0 Foundations** ✅ built: Next.js 16 (TS, Tailwind 4, App Router, Cache Components), shadcn-style UI on Radix,
+- **M0 Foundations** ✅ built: Next.js 16 (TS, Tailwind 4, App Router), shadcn-style UI on Radix, Cloudflare Workers deploy,
   Supabase auth with **6-digit email codes** (magic links open in Safari, not the installed iPhone app, so codes are
   primary and the link is a fallback), `profiles` migration with RLS + PGlite RLS tests, manifest + icons, app shell.
-  *Done when:* you install it to your phone's home screen and log in. (Needs your Supabase project + Vercel deploy.)
+  *Done when:* you install it to your phone's home screen and log in. (Needs your Supabase project + Cloudflare deploy.)
 - **M1 Capture & closet**: `<input type="file" accept="image/*" capture="environment">` first (opens the native
   camera reliably on iOS/Android; build a custom `getUserMedia` camera with a framing guide later). Client resize →
   upload to private bucket → `tagItem` → editable tags. Closet grid + filters + item detail. Batch session mode.
@@ -136,7 +137,8 @@ Each milestone ends with a PR for you to review and test on your phone.
 - **M3 Profile & onboarding**: style quiz (visual choices, not long forms), location, trend appetite.
 - **M4 Today**: Open-Meteo forecast, `suggestOutfits`, swap-one-piece, feedback, wear log, laundry status,
   `refreshStyleMemo`. *Done when:* you'd actually follow a suggestion on 3 of 5 mornings.
-- **M5 Trend brief**: Vercel Cron (weekly) → route handler protected by `CRON_SECRET` → `weeklyTrendBrief`; Trends page.
+- **M5 Trend brief**: Cloudflare Cron Trigger (weekly) → route handler protected by `CRON_SECRET` → `weeklyTrendBrief`;
+  Trends page. The same trigger can run a daily query that stops the Supabase free tier pausing after 7 idle days.
 - **M6 Polish**: design pass, skeletons, empty states, desktop layout, offline shell (service worker via Serwist: moved
   here from M0, since installing only needs the manifest + HTTPS), Lighthouse PWA audit.
 

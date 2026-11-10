@@ -17,9 +17,12 @@ Product plan and milestones: `docs/PLAN.md`. Setup: `README.md`.
 - **Secrets stay on the server.** Only `NEXT_PUBLIC_SUPABASE_URL` and
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` may reach the browser. AI calls run in server
   code only.
-- **Cache Components is on.** Anything that reads the session goes through
-  `createClient()` in `src/lib/supabase/server.ts` (which calls `connection()`) and
-  renders inside a `<Suspense>` boundary.
+- **Deployed on Cloudflare Workers** via `@opennextjs/cloudflare`. Before relying on a
+  Next.js feature, check it works there: `npm run preview` runs the real Workers
+  runtime locally. Cache Components is off because it hangs on Workers.
+- Anything that reads the session goes through `createClient()` in
+  `src/lib/supabase/server.ts` (which calls `connection()`) and renders inside a
+  `<Suspense>` boundary.
 - **Never trust IDs from the model.** Validate AI output with Zod and check that every
   item ID exists and belongs to the user.
 - Mobile first: 44px touch targets, `text-base` inputs (stops iOS zoom), and safe-area
