@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Editorial and quiet: warm neutrals, one oxblood accent.
+ * The clothes supply the color; the interface stays out of the way.
+ */
+:root {
+  --background: #faf8f5;
+  --foreground: #1c1a17;
+  --surface: #ffffff;
+  --muted: #f1ede7;
+  --muted-foreground: #6b655d;
+  --border: #e7e2da;
+  --input: #ddd6cc;
+  --ring: #7a2e2e;
+  --primary: #1c1a17;
+  --primary-foreground: #faf8f5;
+  --accent: #7a2e2e;
+  --accent-foreground: #faf8f5;
+  --destructive: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #141311;
+    --foreground: #f2eee8;
+    --surface: #1c1a17;
+    --muted: #24211d;
+    --muted-foreground: #a39b90;
+    --border: #2f2b26;
+    --input: #3a352f;
+    --ring: #d08a7a;
+    --primary: #f2eee8;
+    --primary-foreground: #141311;
+    --accent: #d08a7a;
+    --accent-foreground: #141311;
+    --destructive: #f97066;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-playfair);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+}
