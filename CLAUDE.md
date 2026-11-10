@@ -23,6 +23,13 @@ Product plan and milestones: `docs/PLAN.md`. Setup: `README.md`.
 - Anything that reads the session goes through `createClient()` in
   `src/lib/supabase/server.ts` (which calls `connection()`) and renders inside a
   `<Suspense>` boundary.
+- **AI calls** live in `src/lib/ai/` (server-only). Every paid call first goes through
+  the `consume_ai_quota` database function, which enforces the daily cap and logs usage.
+- **Photos never pass through the Worker** (10 ms CPU limit): the browser uploads straight
+  to Supabase Storage (`closet/{user_id}/{item_id}/…`), and Claude reads a short-lived
+  signed URL.
+- The tag vocabulary in `src/lib/items/vocabulary.ts` is mirrored by CHECK constraints in
+  the items migration. Change both together.
 - **Never trust IDs from the model.** Validate AI output with Zod and check that every
   item ID exists and belongs to the user.
 - Mobile first: 44px touch targets, `text-base` inputs (stops iOS zoom), and safe-area

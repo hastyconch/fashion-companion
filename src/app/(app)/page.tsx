@@ -3,44 +3,61 @@ import { Check } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
+import { countItems } from "@/lib/items/queries";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
-const STEPS = [
-  {
-    title: "Add your clothes",
-    body: "Photograph what you own. We tag each piece for you.",
-    href: "/add",
-    cta: "Add your first item",
-  },
-  {
-    title: "Tell us your style",
-    body: "A short quiz about how you dress, what you love and what you avoid.",
-  },
-  {
-    title: "Get dressed",
-    body: "Daily outfits built from your closet, the weather and your plans.",
-  },
-];
+/** Enough pieces for the stylist to start combining outfits. */
+const CLOSET_GOAL = 10;
 
 export default async function TodayPage() {
   const supabase = await createClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .maybeSingle();
+  const [{ data: profile }, itemCount] = await Promise.all([
+    supabase.from("profiles").select("display_name").maybeSingle(),
+    countItems(supabase),
+  ]);
 
   const name = profile?.display_name?.trim();
+  const closetReady = itemCount >= CLOSET_GOAL;
+
+  const steps = [
+    {
+      title: "Add your clothes",
+      body: closetReady
+        ? `${itemCount} pieces in your closet. Keep adding whenever you like.`
+        : itemCount > 0
+          ? `${itemCount} of ${CLOSET_GOAL} pieces added. Tops, bottoms, shoes and a jacket make a good start.`
+          : "Photograph what you own. We tag each piece for you.",
+      href: "/add",
+      cta: itemCount > 0 ? "Add more" : "Add your first item",
+      done: closetReady,
+      progress: Math.min(1, itemCount / CLOSET_GOAL),
+    },
+    {
+      title: "Tell us your style",
+      body: "A short quiz about how you dress, what you love and what you avoid.",
+      done: false,
+    },
+    {
+      title: "Get dressed",
+      body: "Daily outfits built from your closet, the weather and your plans.",
+      done: false,
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-10">
       <PageHeader
         eyebrow="Today"
         title={name ? `Welcome, ${name}.` : "Welcome."}
-        description="Your stylist needs to see your closet first. Here's how to get your first outfit."
+        description={
+          closetReady
+            ? "Your closet is ready. Style profiles and daily outfits are coming next."
+            : "Your stylist needs to see your closet first. Here's how to get your first outfit."
+        }
       />
       <ol className="flex flex-col gap-3">
-        {STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const current = index === 0;
           return (
             <li
@@ -56,15 +73,30 @@ export default async function TodayPage() {
                   current ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground",
                 )}
               >
-                {index + 1}
+                {step.done ? <Check className="size-4" aria-label="Done" /> : index + 1}
               </span>
-              <div className="flex flex-col gap-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
                 <div className="space-y-1">
                   <h2 className="font-medium">{step.title}</h2>
                   <p className="text-sm text-muted-foreground">{step.body}</p>
                 </div>
+                {current && step.progress !== undefined && step.progress > 0 && !step.done && (
+                  <div
+                    className="h-1.5 overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-label="Closet progress"
+                    aria-valuemin={0}
+                    aria-valuemax={CLOSET_GOAL}
+                    aria-valuenow={itemCount}
+                  >
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{ width: `${step.progress * 100}%` }}
+                    />
+                  </div>
+                )}
                 {current && step.href && (
-                  <Button asChild className="self-start">
+                  <Button asChild className="self-start" variant={step.done ? "outline" : "default"}>
                     <Link href={step.href}>{step.cta}</Link>
                   </Button>
                 )}

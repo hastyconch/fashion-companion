@@ -1,23 +1,26 @@
 import type { Metadata } from "next";
-import { Camera } from "lucide-react";
+import { redirect } from "next/navigation";
 
-import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { createClient } from "@/lib/supabase/server";
+import { ClosetSession } from "./closet-session";
 
 export const metadata: Metadata = { title: "Add" };
 
-export default function AddPage() {
+export default async function AddPage() {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims.sub;
+  if (!userId) redirect("/login?next=/add");
+
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
         eyebrow="Add"
         title="Add to your closet"
-        description="Lay the piece flat or hang it against a plain wall, in good light."
+        description="Snap one item at a time. We'll tag each piece while you keep going."
       />
-      <EmptyState icon={Camera} title="Camera coming next">
-        Taking and uploading photos, with automatic tagging, arrives in the next
-        update.
-      </EmptyState>
+      <ClosetSession userId={userId} />
     </div>
   );
 }
