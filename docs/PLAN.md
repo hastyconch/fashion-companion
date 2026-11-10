@@ -128,6 +128,10 @@ Each milestone ends with a PR for you to review and test on your phone.
   Supabase auth with **6-digit email codes** (magic links open in Safari, not the installed iPhone app, so codes are
   primary and the link is a fallback), `profiles` migration with RLS + PGlite RLS tests, manifest + icons, app shell.
   *Done when:* you install it to your phone's home screen and log in. (Needs your Supabase project + Cloudflare deploy.)
+- **Auth update:** Supabase's default emails (no custom SMTP) contain only a link, which can't
+  sign in the installed iPhone app. So sign-in is **email + password** for now (account created
+  in the Supabase dashboard, sign-ups off), with the email link as a browser fallback. The 6-digit
+  code login returns once custom SMTP is set up, which is needed before inviting anyone anyway.
 - **M1 Capture & closet** ✅ built (awaiting your 20-item phone test): `<input type="file" accept="image/*" capture="environment">` first (opens the native
   camera reliably on iOS/Android; build a custom `getUserMedia` camera with a framing guide later). Client resize →
   upload to private bucket → `tagItem` → editable tags. Closet grid + filters + item detail. Batch session mode.

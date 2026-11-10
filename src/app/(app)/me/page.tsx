@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+import { ChangePassword } from "./change-password";
 
 export const metadata: Metadata = { title: "Me" };
 
@@ -28,6 +29,7 @@ export default async function MePage() {
           <dd className="text-sm text-muted-foreground">Coming soon</dd>
         </div>
       </dl>
+      <ChangePassword />
       <form action="/auth/signout" method="post">
         <Button type="submit" variant="outline">
           Sign out

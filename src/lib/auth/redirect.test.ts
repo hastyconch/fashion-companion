@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPublicPath, safeNextPath } from "./redirect";
+import { emailLinkRedirect, isPublicPath, safeNextPath } from "./redirect";
 
 describe("safeNextPath", () => {
   it("keeps ordinary in-app paths", () => {
@@ -39,5 +39,34 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/")).toBe(false);
     expect(isPublicPath("/closet")).toBe(false);
     expect(isPublicPath("/loginx")).toBe(false);
+  });
+});
+
+describe("emailLinkRedirect", () => {
+  const go = (url: string) => {
+    const u = new URL(url, "https://app.example");
+    return emailLinkRedirect(u.pathname, u.searchParams);
+  };
+
+  it("sends a stranded sign-in code to the callback, keeping where it landed", () => {
+    expect(go("/?code=abc")).toBe("/auth/callback?code=abc&next=%2F");
+    expect(go("/closet?code=abc&color=navy")).toBe(
+      "/auth/callback?code=abc&next=%2Fcloset%3Fcolor%3Dnavy",
+    );
+  });
+
+  it("leaves the callback itself and ordinary pages alone", () => {
+    expect(go("/auth/callback?code=abc")).toBeNull();
+    expect(go("/closet?color=navy")).toBeNull();
+  });
+
+  it("sends expired-link errors to the login page", () => {
+    expect(go("/?error=access_denied&error_code=otp_expired&error_description=expired")).toBe(
+      "/login?error=link",
+    );
+  });
+
+  it("never turns a stranded code into an off-site redirect", () => {
+    expect(go("//evil.example/?code=abc")).toBe("/auth/callback?code=abc&next=%2F");
   });
 });
