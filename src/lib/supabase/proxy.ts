@@ -41,6 +41,14 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims);
 
+  if (!signedIn && request.nextUrl.pathname.startsWith("/api/")) {
+    // API callers (fetch) need a status code, not an HTML login page.
+    return copyCookies(
+      response,
+      NextResponse.json({ error: "Sign in again." }, { status: 401 }),
+    );
+  }
+
   if (!signedIn && !isPublicPath(request.nextUrl.pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

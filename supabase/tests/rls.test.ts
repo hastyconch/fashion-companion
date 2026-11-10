@@ -30,6 +30,29 @@ const SUPABASE_STUB = `
   grant execute on function auth.uid() to anon, authenticated;
   grant usage on schema public to anon, authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated;
+  alter default privileges in schema public grant all on functions to anon, authenticated;
+  alter default privileges in schema public grant all on sequences to anon, authenticated;
+
+  -- Minimal stand-in for Supabase Storage: the tables our policies touch and
+  -- storage.foldername(), with RLS on and broad grants like the real thing.
+  create schema storage;
+  create table storage.buckets (
+    id text primary key, name text, public boolean,
+    file_size_limit bigint, allowed_mime_types text[]
+  );
+  create table storage.objects (
+    id uuid primary key default gen_random_uuid(),
+    bucket_id text references storage.buckets (id),
+    name text not null,
+    owner uuid default auth.uid()
+  );
+  create function storage.foldername(name text) returns text[] language sql immutable as $$
+    select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1]
+  $$;
+  alter table storage.objects enable row level security;
+  grant usage on schema storage to anon, authenticated;
+  grant all on storage.objects, storage.buckets to anon, authenticated;
+  grant execute on function storage.foldername(text) to anon, authenticated;
 `;
 
 let db: PGlite;
@@ -122,8 +145,175 @@ describe("profiles", () => {
   });
 
   it("removes the profile when the account is deleted", async () => {
-    await db.query("delete from auth.users where id = $1", [BOB]);
-    const { rows } = await db.query("select id from public.profiles where id = $1", [BOB]);
+    const temp = "00000000-0000-4000-8000-0000000000ff";
+    await db.query("insert into auth.users (id, email) values ($1, 'temp@example.com')", [temp]);
+    await db.query("delete from auth.users where id = $1", [temp]);
+    const { rows } = await db.query("select id from public.profiles where id = $1", [temp]);
     expect(rows).toEqual([]);
+  });
+});
+
+const ITEM_A = "11111111-1111-4111-8111-11111111111a";
+const ITEM_B = "22222222-2222-4222-8222-22222222222b";
+const paths = (user: string, item: string) => [`${user}/${item}/full.jpg`, `${user}/${item}/thumb.jpg`];
+
+function addItem(item: string, [image, thumb]: string[]) {
+  return db.query("insert into public.items (id, image_path, thumb_path) values ($1, $2, $3)", [
+    item,
+    image,
+    thumb,
+  ]);
+}
+
+describe("items", () => {
+  beforeAll(async () => {
+    await as(ALICE, () => addItem(ITEM_A, paths(ALICE, ITEM_A)));
+    await as(BOB, () => addItem(ITEM_B, paths(BOB, ITEM_B)));
+  });
+
+  it("assigns new items to the signed-in user", async () => {
+    const { rows } = await db.query<{ user_id: string }>(
+      "select user_id from public.items where id = $1",
+      [ITEM_A],
+    );
+    expect(rows[0].user_id).toBe(ALICE);
+  });
+
+  it("only shows users their own items", async () => {
+    const { rows } = await as(ALICE, () => db.query<{ id: string }>("select id from public.items"));
+    expect(rows.map((r) => r.id)).toEqual([ITEM_A]);
+  });
+
+  it("lets users edit their own tags and status", async () => {
+    const result = await as(ALICE, () =>
+      db.query(
+        "update public.items set category = 'top', colors = '{navy}', status = 'laundry' where id = $1",
+        [ITEM_A],
+      ),
+    );
+    expect(result.affectedRows).toBe(1);
+  });
+
+  it("silently ignores edits and deletes of someone else's items", async () => {
+    const update = await as(ALICE, () =>
+      db.query("update public.items set category = 'shoes' where id = $1", [ITEM_B]),
+    );
+    const remove = await as(ALICE, () => db.query("delete from public.items where id = $1", [ITEM_B]));
+    expect(update.affectedRows).toBe(0);
+    expect(remove.affectedRows).toBe(0);
+  });
+
+  it("won't let a user claim an item for someone else", async () => {
+    const item = "33333333-3333-4333-8333-333333333333";
+    await expect(
+      as(ALICE, () =>
+        db.query(
+          "insert into public.items (id, user_id, image_path, thumb_path) values ($1, $2, $3, $4)",
+          [item, BOB, ...paths(BOB, item)],
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("won't let an item point at another user's photos", async () => {
+    const item = "44444444-4444-4444-8444-444444444444";
+    await expect(as(ALICE, () => addItem(item, paths(BOB, item)))).rejects.toThrow(
+      /items_paths_in_owner_folder/,
+    );
+  });
+
+  it("protects wear stats from direct edits", async () => {
+    await expect(
+      as(ALICE, () => db.query("update public.items set wear_count = 99 where id = $1", [ITEM_A])),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("rejects tags outside the allowed values", async () => {
+    await expect(
+      as(ALICE, () =>
+        db.query("update public.items set seasons = '{monsoon}' where id = $1", [ITEM_A]),
+      ),
+    ).rejects.toThrow(/check constraint/);
+  });
+
+  it("gives signed-out visitors no access", async () => {
+    await expect(as(null, () => db.query("select * from public.items"))).rejects.toThrow(
+      /permission denied/,
+    );
+  });
+});
+
+describe("AI usage quota", () => {
+  it("allows calls up to the daily limit, then refuses", async () => {
+    const results: boolean[] = [];
+    for (let i = 0; i < 3; i++) {
+      const { rows } = await as(ALICE, () =>
+        db.query<{ ok: boolean }>("select public.consume_ai_quota('tag_item', 2) as ok"),
+      );
+      results.push(rows[0].ok);
+    }
+    expect(results).toEqual([true, true, false]);
+  });
+
+  it("counts each user separately", async () => {
+    const { rows } = await as(BOB, () =>
+      db.query<{ ok: boolean }>("select public.consume_ai_quota('tag_item', 2) as ok"),
+    );
+    expect(rows[0].ok).toBe(true);
+  });
+
+  it("only shows users their own usage, and they can't write to it", async () => {
+    const { rows } = await as(ALICE, () =>
+      db.query<{ user_id: string }>("select distinct user_id from public.ai_usage"),
+    );
+    expect(rows).toEqual([{ user_id: ALICE }]);
+    await expect(
+      as(ALICE, () =>
+        db.query("insert into public.ai_usage (user_id, kind) values ($1, 'tag_item')", [ALICE]),
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      as(ALICE, () => db.query("delete from public.ai_usage")),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("is unavailable to signed-out visitors", async () => {
+    await expect(
+      as(null, () => db.query("select public.consume_ai_quota('tag_item', 100)")),
+    ).rejects.toThrow(/permission denied/);
+  });
+});
+
+describe("closet photo storage", () => {
+  const upload = (name: string) =>
+    db.query("insert into storage.objects (bucket_id, name) values ('closet', $1)", [name]);
+
+  it("creates a private bucket", async () => {
+    const { rows } = await db.query<{ public: boolean }>(
+      "select public from storage.buckets where id = 'closet'",
+    );
+    expect(rows).toEqual([{ public: false }]);
+  });
+
+  it("lets users upload into their own folder only", async () => {
+    await as(ALICE, () => upload(paths(ALICE, ITEM_A)[0]));
+    await as(BOB, () => upload(paths(BOB, ITEM_B)[0]));
+    await expect(as(ALICE, () => upload(paths(BOB, ITEM_A)[0]))).rejects.toThrow(
+      /row-level security/,
+    );
+  });
+
+  it("only shows users their own photos", async () => {
+    const { rows } = await as(ALICE, () =>
+      db.query<{ name: string }>("select name from storage.objects"),
+    );
+    expect(rows.map((r) => r.name)).toEqual([paths(ALICE, ITEM_A)[0]]);
+  });
+
+  it("won't let users delete someone else's photos", async () => {
+    const result = await as(ALICE, () =>
+      db.query("delete from storage.objects where name = $1", [paths(BOB, ITEM_B)[0]]),
+    );
+    expect(result.affectedRows).toBe(0);
   });
 });

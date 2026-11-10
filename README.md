@@ -22,6 +22,7 @@ components · Supabase (Postgres + RLS, Auth, Storage) · Cloudflare Workers (vi
    npx supabase link --project-ref <your-project-ref>
    npx supabase db push
    ```
+   Run `npx supabase db push` again whenever new files appear in `supabase/migrations/`.
 3. **Email templates** (Authentication → Emails): replace the **Magic link** and
    **Confirm signup** templates with `supabase/templates/magic_link.html`. The sign-in
    code (`{{ .Token }}`) is what makes login work inside the installed iPhone app.
@@ -35,7 +36,20 @@ components · Supabase (Postgres + RLS, Auth, Storage) · Cloudflare Workers (vi
 6. **Email sending:** Supabase's built-in email sender only allows a few emails per hour.
    That's fine for you alone; set up custom SMTP (e.g. Resend) before inviting anyone.
 
-### 2. Local development
+### 2. Anthropic API key (automatic tagging)
+
+1. [console.anthropic.com](https://console.anthropic.com) → **API Keys** → create a key.
+2. **Settings → Limits:** set a monthly spend limit (e.g. $20), so a bug can never run up
+   a bill. The app also caps tagging at 300 photos per user per day.
+3. Give the key to Cloudflare, not to the code: Worker → **Settings → Variables and
+   Secrets** → Add → type **Secret**, name `ANTHROPIC_API_KEY`. It's a *runtime* secret,
+   not a build variable.
+4. For local development, add `ANTHROPIC_API_KEY=...` to `.env.local` (never committed).
+
+Without a key the app still works: photos upload, and tagging shows "isn't set up yet"
+so you can fill in details by hand.
+
+### 3. Local development
 
 ```bash
 cp .env.example .env.local
@@ -53,7 +67,7 @@ npm install
 npm run dev
 ```
 
-### 3. Deploy (Cloudflare Workers)
+### 4. Deploy (Cloudflare Workers)
 
 Connect the repo once and every push to `main` deploys automatically:
 
@@ -70,7 +84,7 @@ Connect the repo once and every push to `main` deploys automatically:
 To deploy from your own machine instead: `npx wrangler login`, then `npm run deploy`.
 
 **Free-plan limits to know about:** each request gets 10 ms of CPU time and the Worker
-must stay under 3 MB compressed (currently ~1.7 MB). If you ever see error 1102
+must stay under 3 MB compressed (currently ~2.1 MB). If you ever see error 1102
 ("Worker exceeded resource limits"), the Workers Paid plan ($5/month) raises both
 limits.
 
@@ -92,12 +106,16 @@ limits.
 ```
 src/
   app/
-    (app)/          signed-in app: Today, Closet, Add, Looks, Me
+    (app)/          signed-in app: Today, Closet (+ item page), Add, Looks, Me
+    api/items/[id]/tag/  AI tagging endpoint (parallel-safe, quota-checked)
     login/          email-code sign-in (server action + form)
     auth/confirm/   email-link fallback
     auth/signout/   POST-only sign-out
     manifest.ts     PWA manifest
   components/       app shell + ui/ primitives
+  lib/ai/           Anthropic client + item tagger (server-only)
+  lib/items/        tag vocabulary, filters, queries, edit validation
+  lib/images/       in-browser photo resizing (strips EXIF/GPS)
   lib/supabase/     browser, server and proxy clients
   proxy.ts          refreshes the session, redirects signed-out visitors
 supabase/
