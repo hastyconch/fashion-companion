@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginAction, type LoginState } from "./actions";
 
-const initialState: LoginState = { step: "email", email: "" };
+const initialState: LoginState = { step: "password", email: "" };
 
 export function LoginForm({ next }: { next: string }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
@@ -20,12 +20,13 @@ export function LoginForm({ next }: { next: string }) {
         <div className="space-y-1">
           <h2 className="font-display text-2xl">Check your email</h2>
           <p className="text-sm text-muted-foreground">
-            We sent a sign-in code to{" "}
-            <span className="font-medium text-foreground">{state.email}</span>.
+            We sent a sign-in email to{" "}
+            <span className="font-medium text-foreground">{state.email}</span>. Tap the link in it{" "}
+            <strong className="font-medium text-foreground">in this browser</strong>.
           </p>
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="code">Code</Label>
+          <Label htmlFor="code">If the email shows a code, enter it here</Label>
           <Input
             id="code"
             name="code"
@@ -34,8 +35,6 @@ export function LoginForm({ next }: { next: string }) {
             pattern="[0-9 ]*"
             maxLength={12}
             placeholder="123456"
-            autoFocus
-            required
             aria-invalid={Boolean(state.error)}
             aria-describedby={state.error ? "login-error" : undefined}
             className="text-center text-xl tracking-[0.4em]"
@@ -43,65 +42,108 @@ export function LoginForm({ next }: { next: string }) {
         </div>
         <FormError message={state.error} />
         <Button type="submit" name="intent" value="verify" size="lg" disabled={pending}>
-          {pending ? "Signing in…" : "Sign in"}
+          {pending ? "Signing in…" : "Sign in with code"}
         </Button>
         <div className="flex items-center justify-between text-sm">
-          <Button
-            type="submit"
-            name="intent"
-            value="restart"
-            variant="link"
-            className="h-auto px-0 text-muted-foreground"
-            formNoValidate
-          >
-            Use a different email
-          </Button>
-          <Button
-            type="submit"
-            name="intent"
-            value="send"
-            variant="link"
-            className="h-auto px-0 text-muted-foreground"
-            formNoValidate
-            disabled={pending}
-          >
-            Send a new code
-          </Button>
+          <SwitchButton intent="use-password">Use my password</SwitchButton>
+          <SwitchButton intent="send" disabled={pending}>
+            Send another email
+          </SwitchButton>
         </div>
+      </form>
+    );
+  }
+
+  if (state.step === "email") {
+    return (
+      <form action={formAction} className="flex flex-col gap-5">
+        <input type="hidden" name="next" value={next} />
+        <EmailField defaultValue={state.email} error={state.error} />
+        <FormError message={state.error} />
+        <Button type="submit" name="intent" value="send" size="lg" disabled={pending}>
+          {pending ? "Sending…" : "Email me a sign-in link"}
+        </Button>
         <p className="text-xs text-muted-foreground">
-          On a computer you can also tap the link in the email. If you installed
-          the app on your phone, type the code here instead: the link opens in
-          your browser, not the app.
+          Open the link in this browser. If you use the app from your home screen, sign in with
+          your password instead: email links open in your browser, not the app.
         </p>
+        <SwitchButton intent="use-password" className="self-start">
+          Sign in with password
+        </SwitchButton>
       </form>
     );
   }
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
+      <input type="hidden" name="next" value={next} />
+      <EmailField defaultValue={state.email} error={state.error} />
       <div className="flex flex-col gap-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="password">Password</Label>
         <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@example.com"
-          defaultValue={state.email}
-          autoFocus
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
           required
           aria-invalid={Boolean(state.error)}
           aria-describedby={state.error ? "login-error" : undefined}
         />
       </div>
       <FormError message={state.error} />
-      <Button type="submit" name="intent" value="send" size="lg" disabled={pending}>
-        {pending ? "Sending…" : "Email me a sign-in code"}
+      <Button type="submit" name="intent" value="password" size="lg" disabled={pending}>
+        {pending ? "Signing in…" : "Sign in"}
       </Button>
-      <p className="text-xs text-muted-foreground">
-        No password needed. We&apos;ll email you a one-time code.
-      </p>
+      <SwitchButton intent="use-email" className="self-start">
+        Email me a sign-in link instead
+      </SwitchButton>
     </form>
+  );
+}
+
+function EmailField({ defaultValue, error }: { defaultValue: string; error?: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor="email">Email</Label>
+      <Input
+        id="email"
+        name="email"
+        type="email"
+        autoComplete="email"
+        placeholder="you@example.com"
+        defaultValue={defaultValue}
+        required
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? "login-error" : undefined}
+      />
+    </div>
+  );
+}
+
+/** A link-styled submit button that switches steps without validating the form. */
+function SwitchButton({
+  intent,
+  className,
+  disabled,
+  children,
+}: {
+  intent: string;
+  className?: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Button
+      type="submit"
+      name="intent"
+      value={intent}
+      variant="link"
+      formNoValidate
+      disabled={disabled}
+      className={`h-auto px-0 text-muted-foreground ${className ?? ""}`}
+    >
+      {children}
+    </Button>
   );
 }
 

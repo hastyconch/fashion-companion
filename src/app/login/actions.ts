@@ -3,11 +3,17 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { authErrorMessage } from "@/lib/auth/errors";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/server";
 
+/**
+ * password: email + password (the default; works inside the installed app)
+ * email:    ask for a sign-in email
+ * code:     email sent; follow the link or type the code if the email has one
+ */
 export type LoginState = {
-  step: "email" | "code";
+  step: "password" | "email" | "code";
   email: string;
   error?: string;
 };
@@ -15,35 +21,45 @@ export type LoginState = {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_PATTERN = /^\d{6,10}$/;
 
-/**
- * One action drives both steps of the form (send code, then verify it),
- * so the client component stays a thin useActionState wrapper.
- */
-export async function loginAction(
-  previous: LoginState,
-  formData: FormData,
-): Promise<LoginState> {
+/** One action drives every step, so the form stays a thin useActionState wrapper. */
+export async function loginAction(previous: LoginState, formData: FormData): Promise<LoginState> {
   const intent = String(formData.get("intent") ?? "");
-
-  if (intent === "restart") return { step: "email", email: "" };
-
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
+  const next = safeNextPath(String(formData.get("next") ?? ""));
 
+  if (intent === "use-password") return { step: "password", email };
+  if (intent === "use-email") return { step: "email", email };
+
+  const step = intent === "verify" ? "code" : intent === "send" ? "email" : "password";
   if (!EMAIL_PATTERN.test(email)) {
-    return { step: "email", email, error: "Enter a valid email address." };
+    return { step, email, error: "Enter a valid email address." };
   }
 
   const supabase = await createClient();
+
+  if (intent === "password") {
+    const password = String(formData.get("password") ?? "");
+    if (!password) return { step: "password", email, error: "Enter your password." };
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { step: "password", email, error: authErrorMessage(error, "password") };
+    redirect(next);
+  }
 
   if (intent === "send") {
     const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL;
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: origin ? { emailRedirectTo: origin } : undefined,
+      options: {
+        // Sign-in only: never create an account from this form.
+        shouldCreateUser: false,
+        ...(origin && {
+          emailRedirectTo: `${origin}/auth/callback?${new URLSearchParams({ next })}`,
+        }),
+      },
     });
-    if (error) return { step: "email", email, error: friendlyError(error.message) };
+    if (error) return { step: "email", email, error: authErrorMessage(error, "email") };
     return { step: "code", email };
   }
 
@@ -53,23 +69,9 @@ export async function loginAction(
       return { step: "code", email, error: "Enter the code from the email." };
     }
     const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-    if (error) return { step: "code", email, error: friendlyError(error.message) };
-    redirect(safeNextPath(String(formData.get("next") ?? "")));
+    if (error) return { step: "code", email, error: authErrorMessage(error, "code") };
+    redirect(next);
   }
 
   return previous;
-}
-
-function friendlyError(message: string): string {
-  const m = message.toLowerCase();
-  if (m.includes("rate limit")) {
-    return "Too many emails sent. Wait a few minutes and try again.";
-  }
-  if (m.includes("signups not allowed") || m.includes("signup is disabled")) {
-    return "This email doesn't have an account.";
-  }
-  if (m.includes("expired") || m.includes("invalid")) {
-    return "That code is wrong or has expired. Request a new one.";
-  }
-  return "Something went wrong. Please try again.";
 }

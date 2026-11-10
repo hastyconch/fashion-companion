@@ -44,7 +44,8 @@ async function LoginBody({ searchParams }: Pick<PageProps<"/login">, "searchPara
     <>
       {params.error === "link" && (
         <p role="alert" className="rounded-xl bg-muted px-4 py-3 text-sm">
-          That sign-in link is invalid or has expired. Request a new code below.
+          That sign-in link didn&apos;t work. Links expire after an hour and only work in the
+          browser where you asked for them. Sign in with your password instead.
         </p>
       )}
       <LoginForm next={next} />

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-import { isPublicPath, safeNextPath } from "@/lib/auth/redirect";
+import { emailLinkRedirect, isPublicPath, safeNextPath } from "@/lib/auth/redirect";
 import { getSupabaseEnv } from "./env";
 
 /**
@@ -40,6 +40,12 @@ export async function updateSession(request: NextRequest) {
   // is what triggers the token refresh.
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims);
+
+  // A sign-in email link that landed on the wrong page (e.g. the Site URL).
+  const linkTarget = emailLinkRedirect(request.nextUrl.pathname, request.nextUrl.searchParams);
+  if (linkTarget) {
+    return copyCookies(response, NextResponse.redirect(new URL(linkTarget, request.url)));
+  }
 
   if (!signedIn && request.nextUrl.pathname.startsWith("/api/")) {
     // API callers (fetch) need a status code, not an HTML login page.

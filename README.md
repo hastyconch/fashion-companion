@@ -23,18 +23,23 @@ components · Supabase (Postgres + RLS, Auth, Storage) · Cloudflare Workers (vi
    npx supabase db push
    ```
    Run `npx supabase db push` again whenever new files appear in `supabase/migrations/`.
-3. **Email templates** (Authentication → Emails): replace the **Magic link** and
-   **Confirm signup** templates with `supabase/templates/magic_link.html`. The sign-in
-   code (`{{ .Token }}`) is what makes login work inside the installed iPhone app.
-4. **URL configuration** (Authentication → URL Configuration): set the Site URL to your
-   Cloudflare URL (`https://fashion-companion.<your-subdomain>.workers.dev`), and add
-   `http://localhost:3000` and your Cloudflare URL to Redirect URLs.
-5. **Sign up, then lock the door.** Sign in once to create your account, then turn off
-   *Allow new users to sign up* (Authentication → Sign In / Providers) until the app is
-   ready for other people. Otherwise anyone who finds the URL can create an account and
-   spend your AI budget.
-6. **Email sending:** Supabase's built-in email sender only allows a few emails per hour.
-   That's fine for you alone; set up custom SMTP (e.g. Resend) before inviting anyone.
+3. **Lock sign-ups first:** Authentication → Sign In / Providers → Email → turn off
+   *Allow new users to sign up*. Otherwise anyone who finds the URL could create an
+   account and spend your AI budget.
+4. **Create your account by hand:** Authentication → Users → **Add user** → **Create new
+   user** → email + password → tick **Auto Confirm User**. You sign in with this email
+   and password (it works inside the installed iPhone app).
+5. **URL configuration** (Authentication → URL Configuration): Site URL
+   `https://fashion-companion.<your-subdomain>.workers.dev`; Redirect URLs
+   `https://fashion-companion.<your-subdomain>.workers.dev/**` and
+   `http://localhost:3000/**` (the `/**` lets email links return to `/auth/callback`).
+6. **Email (optional for now):** without custom SMTP, Supabase only emails members of your
+   Supabase organization, a few times an hour, using its default template, which has a
+   sign-in **link** and no code. The link works in the browser that requested it (useful
+   for recovery: sign in by link → Me → Change password). Before inviting anyone, set up
+   custom SMTP (e.g. Resend, which needs a domain you own), then paste
+   `supabase/templates/magic_link.html` into the **Magic link** and **Confirm signup**
+   templates to turn on 6-digit codes.
 
 ### 2. Anthropic API key (automatic tagging)
 
@@ -108,8 +113,9 @@ src/
   app/
     (app)/          signed-in app: Today, Closet (+ item page), Add, Looks, Me
     api/items/[id]/tag/  AI tagging endpoint (parallel-safe, quota-checked)
-    login/          email-code sign-in (server action + form)
-    auth/confirm/   email-link fallback
+    login/          password sign-in, plus email link/code (server action + form)
+    auth/callback/  email-link sign-in (code exchange)
+    auth/confirm/   email-link sign-in for custom templates (token hash)
     auth/signout/   POST-only sign-out
     manifest.ts     PWA manifest
   components/       app shell + ui/ primitives

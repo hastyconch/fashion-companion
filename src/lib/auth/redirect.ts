@@ -15,6 +15,26 @@ export function safeNextPath(next: string | null | undefined): string {
   return next;
 }
 
+/**
+ * Supabase email links come back as `?code=…` (or `?error_description=…` when
+ * expired). If one lands anywhere other than /auth/callback (e.g. Supabase fell
+ * back to the Site URL), returns where to send it; otherwise null.
+ */
+export function emailLinkRedirect(pathname: string, search: URLSearchParams): string | null {
+  if (pathname.startsWith("/auth/")) return null;
+
+  if (search.has("error_description") || search.has("error_code")) return "/login?error=link";
+
+  const code = search.get("code");
+  if (!code) return null;
+
+  const rest = new URLSearchParams(search);
+  rest.delete("code");
+  const query = rest.toString();
+  const next = safeNextPath(pathname + (query ? `?${query}` : ""));
+  return `/auth/callback?${new URLSearchParams({ code, next })}`;
+}
+
 /** Paths that don't require a signed-in user. */
 export function isPublicPath(pathname: string): boolean {
   return (
