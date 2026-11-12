@@ -1,8 +1,15 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleUser, Layers, Plus, Shirt, Sun, type LucideIcon } from "lucide-react";
+import {
+  CircleUser,
+  Layers,
+  Plus,
+  Shirt,
+  Sun,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -34,10 +41,15 @@ export function AppNav() {
       >
         <ul className="mx-auto grid h-16 max-w-md grid-cols-5 items-center">
           {LEFT.map((item) => (
-            <TabLink key={item.href} item={item} active={isActive(pathname, item.href)} />
+            <TabLink
+              key={item.href}
+              item={item}
+              active={isActive(pathname, item.href)}
+            />
           ))}
           <li className="flex justify-center">
             <Link
+              prefetch={false}
               href={ADD.href}
               aria-label="Add an item"
               aria-current={isActive(pathname, ADD.href) ? "page" : undefined}
@@ -47,7 +59,11 @@ export function AppNav() {
             </Link>
           </li>
           {RIGHT.map((item) => (
-            <TabLink key={item.href} item={item} active={isActive(pathname, item.href)} />
+            <TabLink
+              key={item.href}
+              item={item}
+              active={isActive(pathname, item.href)}
+            />
           ))}
         </ul>
       </nav>
@@ -56,10 +72,11 @@ export function AppNav() {
         aria-label="Main"
         className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col gap-8 border-r bg-background px-5 py-8 md:flex"
       >
-        <Link href="/" className="px-3 font-display text-lg whitespace-nowrap">
+        <Link href="/" prefetch={false} className="px-3 font-display text-lg whitespace-nowrap">
           Fashion Companion
         </Link>
         <Link
+          prefetch={false}
           href={ADD.href}
           className="flex h-11 items-center justify-center gap-2 rounded-full bg-accent text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
         >
@@ -71,6 +88,7 @@ export function AppNav() {
             return (
               <li key={href}>
                 <Link
+                  prefetch={false}
                   href={href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
@@ -80,8 +98,7 @@ export function AppNav() {
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
-                  <Icon className="size-5" strokeWidth={1.75} />
-                  {label}
+                  <SidebarInner icon={Icon} label={label} />
                 </Link>
               </li>
             );
@@ -97,6 +114,7 @@ function TabLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <li className="flex justify-center">
       <Link
+        prefetch={false}
         href={item.href}
         aria-current={active ? "page" : undefined}
         className={cn(
@@ -104,9 +122,58 @@ function TabLink({ item, active }: { item: NavItem; active: boolean }) {
           active ? "text-foreground" : "text-muted-foreground",
         )}
       >
-        <Icon className="size-5" strokeWidth={active ? 2.25 : 1.75} />
-        {item.label}
+        <TabInner icon={Icon} label={item.label} active={active} />
       </Link>
     </li>
+  );
+}
+
+/**
+ * Lights up the moment a tab is tapped and pulses until the page arrives, so
+ * taps feel instant even though pages render on the server.
+ */
+function TabInner({
+  icon: Icon,
+  label,
+  active,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+}) {
+  const { pending } = useLinkStatus();
+  const on = active || pending;
+  return (
+    <span
+      className={cn(
+        "flex flex-col items-center gap-0.5",
+        on && "text-foreground",
+        pending && "animate-pulse",
+      )}
+    >
+      <Icon className="size-5" strokeWidth={on ? 2.25 : 1.75} />
+      {label}
+    </span>
+  );
+}
+
+function SidebarInner({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-3",
+        pending && "animate-pulse text-foreground",
+      )}
+    >
+      <Icon className="size-5" strokeWidth={1.75} />
+      {label}
+    </span>
   );
 }

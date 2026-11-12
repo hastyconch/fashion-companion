@@ -35,6 +35,15 @@ async function fetchOutfits(occasion: OutfitOccasion, refresh: boolean): Promise
   }
 }
 
+/**
+ * Lets the server work out "today" in this time zone on the next visit, so it
+ * can render the outfits straight into the page.
+ */
+function rememberTimeZone() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  document.cookie = `tz=${encodeURIComponent(tz)}; path=/; max-age=31536000; samesite=lax`;
+}
+
 /** The user's local calendar date, YYYY-MM-DD. */
 function localDate() {
   return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -44,44 +53,64 @@ export function TodayOutfits({
   fahrenheit,
   hasLocation,
   hasStyle,
+  initialOutfits,
 }: {
   fahrenheit: boolean;
   hasLocation: boolean;
   hasStyle: boolean;
+  /** Today's everyday outfits, when the server could already load them. */
+  initialOutfits: OutfitView[] | null;
 }) {
   const [occasion, setOccasion] = useState<OutfitOccasion>("everyday");
-  const [state, setState] = useState<State>({ kind: "loading", slow: false });
+  const [state, setState] = useState<State>(
+    initialOutfits?.length ? { kind: "ready", outfits: initialOutfits } : { kind: "loading", slow: false },
+  );
   const request = useRef(0);
+  // Occasions seen this visit, so switching back is instant.
+  const seen = useRef(new Map<OutfitOccasion, OutfitView[]>(initialOutfits?.length ? [["everyday", initialOutfits]] : []));
 
   // Only the latest request may update the screen (occasion taps can overlap).
   // State is set from callbacks, never synchronously inside the effect.
-  const load = (forOccasion: OutfitOccasion, refresh = false) => {
+  // `background`: cached outfits are already on screen; only replace them with
+  // fresh ones, never with a spinner or an error.
+  const load = (forOccasion: OutfitOccasion, refresh = false, background = false) => {
     const id = ++request.current;
-    const slowTimer = setTimeout(() => {
-      if (request.current === id) setState({ kind: "loading", slow: true });
-    }, 1500);
+    const slowTimer = background
+      ? undefined
+      : setTimeout(() => {
+          if (request.current === id) setState({ kind: "loading", slow: true });
+        }, 1500);
     return fetchOutfits(forOccasion, refresh).then((next) => {
       clearTimeout(slowTimer);
-      if (request.current === id) setState(next);
+      if (next.kind === "ready") seen.current.set(forOccasion, next.outfits);
+      if (request.current !== id || (background && next.kind !== "ready")) return;
+      setState(next);
     });
   };
 
   useEffect(() => {
+    rememberTimeZone();
+    if (initialOutfits?.length) return;
     const id = ++request.current;
     const slowTimer = setTimeout(() => {
       if (request.current === id) setState({ kind: "loading", slow: true });
     }, 1500);
     fetchOutfits("everyday", false).then((next) => {
       clearTimeout(slowTimer);
+      if (next.kind === "ready") seen.current.set("everyday", next.outfits);
       if (request.current === id) setState(next);
     });
     return () => clearTimeout(slowTimer);
+    // Runs once on mount; initialOutfits only seeds the first render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const choose = (next: OutfitOccasion) => {
     setOccasion(next);
-    setState({ kind: "loading", slow: false });
-    void load(next);
+    const cached = seen.current.get(next);
+    // Show what we have instantly, then refresh quietly in the background.
+    setState(cached ? { kind: "ready", outfits: cached } : { kind: "loading", slow: false });
+    void load(next, false, Boolean(cached));
   };
 
   const refresh = () => {
@@ -164,7 +193,7 @@ export function TodayOutfits({
           {state.error && <p className="text-sm text-muted-foreground">{state.error}</p>}
           <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 [scrollbar-width:none] md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0">
             {state.outfits.map((outfit) => (
-              <div key={outfit.id} className="w-[85%] shrink-0 snap-center md:w-auto">
+              <div key={`${outfit.id}-${outfit.status}`} className="w-[85%] shrink-0 snap-center md:w-auto">
                 <OutfitCard outfit={outfit} />
               </div>
             ))}

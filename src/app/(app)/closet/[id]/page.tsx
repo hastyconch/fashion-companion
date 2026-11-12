@@ -35,14 +35,22 @@ export default async function ItemPage({ params }: PageProps<"/closet/[id]">) {
 
       <div className="grid gap-8 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] md:items-start">
         <div className="flex flex-col gap-4 md:sticky md:top-8">
-          <div className="aspect-[4/5] overflow-hidden rounded-3xl bg-muted">
+          <div className="relative aspect-[4/5] overflow-hidden rounded-3xl bg-muted">
             {item.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={item.imageUrl}
-                alt={item.description ?? "Closet item"}
-                className="size-full object-contain"
-              />
+              <>
+                {/* The grid thumbnail is already cached: show it instantly, sharpen when the full photo lands. */}
+                {item.thumbUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.thumbUrl} alt="" aria-hidden className="absolute inset-0 size-full object-contain" />
+                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.imageUrl}
+                  alt={item.description ?? "Closet item"}
+                  decoding="async"
+                  className="relative size-full object-contain"
+                />
+              </>
             ) : (
               <span className="flex size-full items-center justify-center">
                 <Shirt className="size-10 text-muted-foreground" />

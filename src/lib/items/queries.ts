@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { likePattern, type ClosetFilters } from "./filters";
+import { photoUrl } from "./photos";
 import type { Category, Color, ItemStatus, Pattern, Season } from "./vocabulary";
 
 export type TagStatus = "pending" | "done" | "failed" | "not_clothing";
@@ -37,9 +38,8 @@ export type ItemDetail = {
   last_worn_at: string | null;
   created_at: string;
   imageUrl: string | null;
+  thumbUrl: string | null;
 };
-
-const SIGNED_URL_SECONDS = 60 * 60;
 
 /** The closet grid for the signed-in user (RLS scopes rows to them). */
 export async function listClosetItems(
@@ -64,19 +64,13 @@ export async function listClosetItems(
 
   const { data, error } = await query;
   if (error) throw error;
-  if (!data.length) return [];
-
-  const urls = await signedUrls(
-    supabase,
-    data.map((item) => item.thumb_path),
-  );
   return data.map((item) => ({
     id: item.id,
     description: item.description,
     category: item.category,
     status: item.status,
     tag_status: item.tag_status,
-    thumbUrl: urls.get(item.thumb_path) ?? null,
+    thumbUrl: photoUrl(item.thumb_path),
   }));
 }
 
@@ -90,9 +84,7 @@ export async function getItem(supabase: SupabaseClient, id: string): Promise<Ite
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-
-  const urls = await signedUrls(supabase, [data.image_path]);
-  return { ...data, imageUrl: urls.get(data.image_path) ?? null } as ItemDetail;
+  return { ...data, imageUrl: photoUrl(data.image_path), thumbUrl: photoUrl(data.thumb_path) } as ItemDetail;
 }
 
 export async function countItems(supabase: SupabaseClient): Promise<number> {
@@ -102,16 +94,4 @@ export async function countItems(supabase: SupabaseClient): Promise<number> {
     .neq("status", "archived");
   if (error) throw error;
   return count ?? 0;
-}
-
-async function signedUrls(supabase: SupabaseClient, paths: string[]) {
-  const { data, error } = await supabase.storage
-    .from("closet")
-    .createSignedUrls(paths, SIGNED_URL_SECONDS);
-  const map = new Map<string, string>();
-  if (error || !data) return map;
-  for (const entry of data) {
-    if (entry.path && entry.signedUrl) map.set(entry.path, entry.signedUrl);
-  }
-  return map;
 }

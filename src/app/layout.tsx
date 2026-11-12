@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   },
   description: "Your closet, styled for today.",
   applicationName: "Fashion Companion",
+  // Plain static files (public/), served by Cloudflare's edge without the Worker.
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon.svg", apple: "/apple-icon.png" },
   appleWebApp: {
     capable: true,
     title: "Companion",
