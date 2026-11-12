@@ -21,5 +21,13 @@
 	"placement": { "mode": "smart" },
 	"observability": {
 		"enabled": true
+	},
+	// Pull requests deploy as Worker Previews (`wrangler preview` in Workers Builds),
+	// which refuse to run without this block. The self-reference service binding is
+	// left out on purpose: only OpenNext's revalidation queue uses it, and we don't.
+	// Previews have their own secrets (`wrangler preview secret`): without an Anthropic key
+	// there, AI tagging and outfits show as not set up. They share the live Supabase data.
+	"previews": {
+		"placement": { "mode": "smart" }
 	}
 }
