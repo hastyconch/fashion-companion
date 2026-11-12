@@ -32,7 +32,7 @@ await writeFile("public/icons/icon-512.png", await png(512, { glyphScale: 0.55 }
 // Maskable: keep the glyph inside the central 80% safe zone.
 await writeFile("public/icons/icon-maskable-512.png", await png(512, { glyphScale: 0.45 }));
 // iOS home screen icon (iOS rounds the corners itself).
-await writeFile("src/app/apple-icon.png", await png(180, { glyphScale: 0.55 }));
+await writeFile("public/apple-icon.png", await png(180, { glyphScale: 0.55 }));
 // Browser tab icon.
-await writeFile("src/app/icon.svg", svg({ size: 64, glyphScale: 0.62, rounded: true }));
+await writeFile("public/icon.svg", svg({ size: 64, glyphScale: 0.62, rounded: true }));
 console.log("Icons written.");

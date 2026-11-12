@@ -31,6 +31,12 @@ export async function POST(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return Response.json({ status: "error", error: "Sign in again." }, { status: 401 });
 
+  // Fast path: today's outfits already exist, so one query and done.
+  if (body.refresh !== true) {
+    const existing = await loadOutfits(supabase, body.date, body.occasion);
+    if (existing.length) return Response.json({ status: "ok", outfits: existing });
+  }
+
   const result = await ensureOutfits({
     supabase,
     date: body.date,

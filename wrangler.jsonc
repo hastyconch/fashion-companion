@@ -16,6 +16,9 @@
 			"service": "fashion-companion"
 		}
 	],
+	// Runs the Worker close to the database: pages make several Supabase calls
+	// each, so cutting each round trip matters more than the first hop.
+	"placement": { "mode": "smart" },
 	"observability": {
 		"enabled": true
 	}

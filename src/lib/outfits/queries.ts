@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { photoUrl } from "@/lib/items/photos";
 import type { Category } from "@/lib/items/vocabulary";
 import type { Weather } from "@/lib/weather/open-meteo";
 import type { OutfitOccasion } from "./occasions";
@@ -33,7 +34,12 @@ const DISPLAY_ORDER: Category[] = [
   "outerwear", "top", "dress", "activewear", "bottom", "shoes", "bag", "accessory", "other",
 ];
 
-const OUTFIT_COLUMNS = "id, title, reason, tip, status, feedback_reason, occasion, for_date, weather";
+// One round trip: outfits, their pieces and each piece's item, embedded.
+const OUTFIT_SELECT =
+  "id, title, reason, tip, status, feedback_reason, occasion, for_date, weather, " +
+  "outfit_items(position, items(id, description, category, thumb_path))";
+
+type ItemRow = { id: string; description: string | null; category: Category | null; thumb_path: string };
 
 type OutfitRow = {
   id: string;
@@ -45,6 +51,7 @@ type OutfitRow = {
   occasion: OutfitOccasion;
   for_date: string;
   weather: Weather | null;
+  outfit_items: { position: number; items: ItemRow | null }[] | null;
 };
 
 /** Today's outfits for one occasion, in the order they were suggested. */
@@ -55,46 +62,49 @@ export async function loadOutfits(
 ): Promise<OutfitView[]> {
   const { data, error } = await supabase
     .from("outfits")
-    .select(OUTFIT_COLUMNS)
+    .select(OUTFIT_SELECT)
     .eq("for_date", date)
     .eq("occasion", occasion)
     .order("created_at", { ascending: true })
     .order("position", { ascending: true });
   if (error) throw error;
-  return withPieces(supabase, (data ?? []) as OutfitRow[]);
+  return ((data ?? []) as unknown as OutfitRow[]).map(toView);
 }
 
 /** Outfits they liked or wore, newest first (the Looks page). */
 export async function loadSavedLooks(supabase: SupabaseClient): Promise<OutfitView[]> {
   const { data, error } = await supabase
     .from("outfits")
-    .select(OUTFIT_COLUMNS)
+    .select(OUTFIT_SELECT)
     .in("status", ["liked", "worn"])
     .order("updated_at", { ascending: false })
     .limit(60);
   if (error) throw error;
-  return withPieces(supabase, (data ?? []) as OutfitRow[]);
+  return ((data ?? []) as unknown as OutfitRow[]).map(toView);
 }
 
 /** One piece, ready to show (used after a swap). */
 export async function loadPiece(supabase: SupabaseClient, itemId: string): Promise<OutfitPiece | null> {
-  const [piece] = await piecesFor(supabase, [itemId]);
-  return piece ?? null;
+  const { data, error } = await supabase
+    .from("items")
+    .select("id, description, category, thumb_path")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return toPiece(data as ItemRow);
 }
 
-async function withPieces(supabase: SupabaseClient, outfits: OutfitRow[]): Promise<OutfitView[]> {
-  if (!outfits.length) return [];
-  const { data: links, error } = await supabase
-    .from("outfit_items")
-    .select("outfit_id, item_id, position")
-    .in("outfit_id", outfits.map((o) => o.id))
-    .order("position", { ascending: true });
-  if (error) throw error;
+function toPiece(item: ItemRow): OutfitPiece {
+  return {
+    id: item.id,
+    description: item.description,
+    category: item.category,
+    thumbUrl: photoUrl(item.thumb_path),
+  };
+}
 
-  const pieces = new Map(
-    (await piecesFor(supabase, [...new Set((links ?? []).map((l) => l.item_id as string))])).map((p) => [p.id, p]),
-  );
-  return outfits.map((o) => ({
+function toView(o: OutfitRow): OutfitView {
+  return {
     id: o.id,
     title: o.title,
     reason: o.reason,
@@ -104,34 +114,15 @@ async function withPieces(supabase: SupabaseClient, outfits: OutfitRow[]): Promi
     occasion: o.occasion,
     forDate: o.for_date,
     weather: o.weather,
-    pieces: (links ?? [])
-      .filter((l) => l.outfit_id === o.id)
-      .map((l) => pieces.get(l.item_id))
-      .filter((p): p is OutfitPiece => Boolean(p))
+    pieces: (o.outfit_items ?? [])
+      .filter((link): link is { position: number; items: ItemRow } => Boolean(link.items))
+      .sort((a, b) => a.position - b.position)
+      .map((link) => toPiece(link.items))
       .sort((a, b) => order(a.category) - order(b.category)),
-  }));
+  };
 }
 
 function order(category: Category | null) {
   const i = category ? DISPLAY_ORDER.indexOf(category) : -1;
   return i === -1 ? DISPLAY_ORDER.length : i;
-}
-
-async function piecesFor(supabase: SupabaseClient, ids: string[]): Promise<OutfitPiece[]> {
-  if (!ids.length) return [];
-  const { data: items, error } = await supabase
-    .from("items")
-    .select("id, description, category, thumb_path")
-    .in("id", ids);
-  if (error) throw error;
-  const { data: signed } = await supabase.storage
-    .from("closet")
-    .createSignedUrls((items ?? []).map((i) => i.thumb_path), 60 * 60);
-  const urls = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
-  return (items ?? []).map((i) => ({
-    id: i.id,
-    description: i.description,
-    category: i.category,
-    thumbUrl: urls.get(i.thumb_path) ?? null,
-  }));
 }

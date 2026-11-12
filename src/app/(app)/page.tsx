@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import Link from "next/link";
 import { Check } from "lucide-react";
 
@@ -6,6 +6,8 @@ import { TodayOutfits } from "@/components/outfits/today-outfits";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { countItems } from "@/lib/items/queries";
+import { localDateIn } from "@/lib/outfits/dates";
+import { loadOutfits, type OutfitView } from "@/lib/outfits/queries";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { prefersFahrenheit } from "@/lib/weather/open-meteo";
@@ -15,14 +17,23 @@ const CLOSET_GOAL = 10;
 
 export default async function TodayPage() {
   const supabase = await createClient();
-  const [{ data: profile }, itemCount, requestHeaders] = await Promise.all([
+  // The browser's time zone (set by TodayOutfits) lets us load today's outfits
+  // in parallel with everything else and render them straight into the page.
+  const cookieDate = localDateIn(decodeURIComponent((await cookies()).get("tz")?.value ?? ""));
+  const outfitsFor = (date: string | null): Promise<OutfitView[] | null> =>
+    date ? loadOutfits(supabase, date, "everyday").catch(() => null) : Promise.resolve(null);
+
+  const [{ data: profile }, itemCount, requestHeaders, cookieOutfits] = await Promise.all([
     supabase
       .from("profiles")
       .select("display_name, style_memo, style_completed_at, latitude, timezone")
       .maybeSingle(),
     countItems(supabase),
     headers(),
+    outfitsFor(cookieDate),
   ]);
+  const initialOutfits =
+    cookieOutfits ?? (itemCount > 0 ? await outfitsFor(localDateIn(profile?.timezone)) : null);
 
   const name = profile?.display_name?.trim();
   const closetReady = itemCount >= CLOSET_GOAL;
@@ -80,6 +91,7 @@ export default async function TodayPage() {
           fahrenheit={prefersFahrenheit(requestHeaders.get("accept-language"))}
           hasLocation={profile?.latitude != null}
           hasStyle={styleDone}
+          initialOutfits={initialOutfits}
         />
       )}
 
