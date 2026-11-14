@@ -1,4 +1,5 @@
 import type { Category } from "@/lib/items/vocabulary";
+import { seededShuffle } from "./variety";
 
 /** The item fields outfit planning uses. */
 export type StylableItem = {
@@ -23,9 +24,14 @@ const CATEGORY_ORDER: Category[] = [
 /**
  * The closet as compact lines with short references (i1, i2, …). The model
  * only ever sees these refs, never real IDs, so it can't invent a valid one.
+ *
+ * With a `seed` (the date), pieces are shuffled within each category, so the
+ * same items don't always sit at the top of the list, where models tend to
+ * pick from. The same seed keeps the same order, so the prompt cache still
+ * hits across occasions on one day.
  */
-export function closetForAi(items: StylableItem[]) {
-  const sorted = [...items].sort(
+export function closetForAi(items: StylableItem[], seed?: string) {
+  const sorted = (seed ? seededShuffle(items, seed) : [...items]).sort(
     (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category),
   );
   const refToId = new Map<string, string>();

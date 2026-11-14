@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { closetForAi, closetReadiness, targetWarmth, type StylableItem } from "./closet";
 import { pickSwap } from "./swap";
 import { checkOutfit } from "./validate";
+import { daysBefore, describeVariety, piecesKey } from "./variety";
 
 const item = (id: string, category: StylableItem["category"], extra: Partial<StylableItem> = {}): StylableItem => ({
   id,
@@ -123,5 +124,55 @@ describe("targetWarmth", () => {
   it("maps feels-like temperature to a 1–5 warmth", () => {
     expect([30, 20, 14, 7, -3].map(targetWarmth)).toEqual([1, 2, 3, 4, 5]);
     expect(targetWarmth(null)).toBeNull();
+  });
+});
+
+describe("variety", () => {
+  const items = [
+    { id: "tee", category: "top" as const },
+    { id: "jeans", category: "bottom" as const },
+    { id: "boots", category: "shoes" as const },
+    { id: "scarf", category: "accessory" as const },
+  ];
+  const refs = new Map([["tee", "i1"], ["jeans", "i2"], ["boots", "i3"], ["scarf", "i4"]]);
+
+  it("flags pieces used again and again, and lists core pieces not used at all", () => {
+    const recent = ["2026-11-13", "2026-11-12", "2026-11-11", "2026-11-10"].map((for_date, n) => ({
+      for_date,
+      itemIds: n % 2 ? ["tee", "jeans"] : ["jeans", "tee", n ? "scarf" : "tee"],
+    }));
+    // Distinct combinations: {jeans, tee} and {jeans, tee, scarf}.
+    const { lines, recentKeys } = describeVariety(recent, items, refs);
+    expect(recentKeys).toEqual(new Set(["jeans+tee", "jeans+scarf+tee"]));
+    expect(lines.filter((l) => l.startsWith("- "))).toHaveLength(2);
+    // Bags and accessories aren't core, so the scarf is never "unused".
+    expect(lines).toContain("Pieces you haven't suggested in the last two weeks: i3.");
+    expect(lines.some((l) => l.startsWith("Pieces you've leaned on"))).toBe(false);
+  });
+
+  it("says nothing when there's no history yet", () => {
+    expect(describeVariety([], items, refs).lines).toEqual([]);
+  });
+
+  it("counts a piece as leaned on after 4 different outfits", () => {
+    const shoes = ["a", "b", "c", "d"].map((x) => ({ id: x, category: "shoes" as const }));
+    const recent = shoes.map((s, n) => ({ for_date: `2026-11-1${n}`, itemIds: ["tee", s.id] }));
+    const { lines } = describeVariety(recent, [...items, ...shoes], new Map([...refs, ...shoes.map((s) => [s.id, s.id] as [string, string])]));
+    expect(lines).toContain("Pieces you've leaned on a lot lately, use sparingly: i1 (4 times).");
+  });
+
+  it("shuffles the closet within categories, the same way for the same day", () => {
+    const tops = Array.from({ length: 8 }, (_, n) => item(`t${n}`, "top"));
+    const order = (seed?: string) => closetForAi([item("s", "shoes"), ...tops], seed).lines.map((l) => l.split(": ")[1].split(" (")[0]);
+    expect(order("2026-11-13")).toEqual(order("2026-11-13"));
+    expect(order("2026-11-13")).not.toEqual(order("2026-11-14"));
+    expect(order("2026-11-13").at(-1)).toBe("shoes s"); // still sorted by category
+    expect([...order("2026-11-13")].sort()).toEqual([...order()].sort());
+  });
+
+  it("finds the date two weeks back", () => {
+    expect(daysBefore("2026-11-13", 14)).toBe("2026-10-30");
+    expect(daysBefore("2026-03-01", 1)).toBe("2026-02-28");
+    expect(piecesKey(["b", "a", "b"])).toBe("a+b");
   });
 });

@@ -24,6 +24,8 @@ function fakeDb(tables: Record<string, Row[]>, quota = true) {
       select: () => q,
       eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), q),
       in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), q),
+      gte: (k: string, v: string) => (filters.push((r) => String(r[k]) >= v), q),
+      lte: (k: string, v: string) => (filters.push((r) => String(r[k]) <= v), q),
       order: () => q,
       limit: (n: number) => ((limit = n), q),
       delete: () => ((mode = "delete"), q),
@@ -161,5 +163,73 @@ describe("ensureOutfits", () => {
     expect(suggest.mock.calls[0][0].context).toEqual(
       expect.arrayContaining(['- Disliked "Too sharp" (i1, i4): "Too formal"']),
     );
+  });
+
+  it("tells the stylist what it suggested lately, and what it hasn't used", async () => {
+    const shirt = item("shirt", "top");
+    const { suggest, run } = setup({
+      tables: {
+        items: [...CLOSET, shirt],
+        outfits: [
+          { id: "a", title: "A", status: "suggested", for_date: "2026-11-12", occasion: "work" },
+          { id: "b", title: "B", status: "suggested", for_date: "2026-11-11", occasion: "everyday" },
+          { id: "old", title: "Old", status: "suggested", for_date: "2026-10-01", occasion: "work" },
+        ],
+        outfit_items: [
+          { outfit_id: "a", item_id: "tee" }, { outfit_id: "a", item_id: "jeans" }, { outfit_id: "a", item_id: "boots" },
+          { outfit_id: "b", item_id: "jeans" }, { outfit_id: "b", item_id: "tee" }, { outfit_id: "b", item_id: "boots" },
+          { outfit_id: "old", item_id: "shirt" },
+        ],
+      },
+    });
+    await run();
+    const { closet, context } = suggest.mock.calls[0][0];
+    const ref = (id: string) => closet.find((l) => l.includes(`top ${id}`) || l.includes(` ${id} (`))!.split(":")[0];
+    // The same three pieces in another order count as one combination; October is too old to matter.
+    expect(context.filter((l) => l.startsWith("- "))).toEqual([expect.stringMatching(/^- Thu, Nov 12: /)]);
+    expect(context).toContain("Suggested in the last two weeks (don't repeat these or near-copies):");
+    const unused = context.find((l) => l.startsWith("Pieces you haven't suggested"))!;
+    expect(unused).toContain(ref("shirt"));
+    expect(unused).toContain(ref("coat"));
+    expect(unused).not.toContain(`${ref("tee")},`);
+  });
+
+  it("drops repeats: duplicates within a batch and outfits suggested lately", async () => {
+    const { tables, suggest, run } = setup({
+      tables: {
+        outfits: [{ id: "a", title: "Yesterday", status: "suggested", for_date: "2026-11-12", occasion: "work" }],
+        outfit_items: [{ outfit_id: "a", item_id: "tee" }, { outfit_id: "a", item_id: "jeans" }, { outfit_id: "a", item_id: "boots" }],
+      },
+    });
+    suggest.mockResolvedValueOnce({
+      outfits: [
+        { title: "Same as yesterday", pieces: ["i4", "i1", "i2"], why: "", tip: "" },
+        { title: "Layers", pieces: ["i1", "i2", "i3", "i4"], why: "", tip: "" },
+        { title: "Layers again", pieces: ["i4", "i3", "i2", "i1"], why: "", tip: "" },
+      ],
+    });
+    expect(await run()).toEqual({ status: "ok", created: 1 });
+    expect(tables.outfits.filter((o) => o.for_date === "2026-11-13").map((o) => o.title)).toEqual(["Layers"]);
+  });
+
+  it("keeps a repeat when every suggestion is one, rather than showing nothing", async () => {
+    const { tables, suggest, run } = setup({
+      tables: {
+        outfits: [{ id: "a", title: "Yesterday", status: "suggested", for_date: "2026-11-12", occasion: "work" }],
+        outfit_items: [{ outfit_id: "a", item_id: "tee" }, { outfit_id: "a", item_id: "jeans" }, { outfit_id: "a", item_id: "boots" }],
+      },
+    });
+    suggest.mockResolvedValueOnce({ outfits: [{ title: "Again", pieces: ["i1", "i2", "i4"], why: "", tip: "" }] });
+    expect(await run()).toEqual({ status: "ok", created: 1 });
+    expect(tables.outfits.at(-1)?.title).toBe("Again");
+  });
+
+  it("on refresh, tells the stylist what it just showed", async () => {
+    const { suggest, run } = setup();
+    await run();
+    await run(true);
+    const context = suggest.mock.calls[1][0].context;
+    expect(context).toContain("Suggested in the last two weeks (don't repeat these or near-copies):");
+    expect(context.filter((l) => l.startsWith("- Fri, Nov 13: "))).toHaveLength(2);
   });
 });

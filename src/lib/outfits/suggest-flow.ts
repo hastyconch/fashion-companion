@@ -10,6 +10,7 @@ import { describeWeather, type Weather } from "@/lib/weather/open-meteo";
 import { closetForAi, closetReadiness, type StylableItem } from "./closet";
 import { OUTFIT_OCCASIONS, type OutfitOccasion } from "./occasions";
 import { checkOutfit } from "./validate";
+import { VARIETY_DAYS, daysBefore, describeVariety, piecesKey } from "./variety";
 
 export const DAILY_SUGGEST_LIMIT = 30;
 const MAX_OUTFITS = 3;
@@ -51,7 +52,7 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
   if (existingError) return { status: "error", error: "Couldn't load today's outfits." };
   if (!refresh && existing.length > 0) return { status: "ok", created: 0 };
 
-  const [profileRes, itemsRes, historyRes] = await Promise.all([
+  const [profileRes, itemsRes, historyRes, recentRes] = await Promise.all([
     supabase.from("profiles").select("preferences, style_memo, latitude, longitude").maybeSingle(),
     supabase
       .from("items")
@@ -65,8 +66,16 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
       .in("status", ["liked", "disliked", "worn"])
       .order("updated_at", { ascending: false })
       .limit(12),
+    // Everything suggested lately, reacted to or not, so the stylist doesn't repeat itself.
+    supabase
+      .from("outfits")
+      .select("id, for_date")
+      .gte("for_date", daysBefore(date, VARIETY_DAYS))
+      .lte("for_date", date)
+      .order("for_date", { ascending: false })
+      .limit(60),
   ]);
-  if (profileRes.error || itemsRes.error || historyRes.error) {
+  if (profileRes.error || itemsRes.error || historyRes.error || recentRes.error) {
     return { status: "error", error: "Couldn't load your closet." };
   }
 
@@ -87,8 +96,16 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
       ? await deps.weather(profile.latitude, profile.longitude, date)
       : null;
 
-  const { lines, refToId, idToRef } = closetForAi(items);
-  const history = await describeHistory(supabase, historyRes.data ?? [], idToRef);
+  const { lines, refToId, idToRef } = closetForAi(items, date);
+  const historyOutfits = historyRes.data ?? [];
+  const recentOutfits = recentRes.data ?? [];
+  const piecesOf = await loadPieces(supabase, [...historyOutfits, ...recentOutfits].map((o) => o.id));
+  const history = describeHistory(historyOutfits, piecesOf, idToRef);
+  const variety = describeVariety(
+    recentOutfits.map((o) => ({ for_date: o.for_date, itemIds: piecesOf.get(o.id) ?? [] })),
+    items,
+    idToRef,
+  );
   const recentlyWorn = items
     .filter((i) => i.last_worn_at && now().getTime() - new Date(i.last_worn_at).getTime() < 3 * 86_400_000)
     .map((i) => idToRef.get(i.id));
@@ -103,6 +120,7 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
       : `Weather: unknown (no location set). Assume a typical ${season(date)} day in the Northern Hemisphere.`,
     recentlyWorn.length ? `Worn in the last 3 days: ${recentlyWorn.join(", ")}.` : "Nothing worn recently.",
     ...(history.length ? ["Their recent reactions:", ...history] : []),
+    ...variety.lines,
     `Propose ${MAX_OUTFITS} outfits.`,
   ];
 
@@ -130,9 +148,18 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
         { requireShoes },
       ),
     }))
-    .filter((o) => o.check.ok)
-    .slice(0, MAX_OUTFITS);
-  if (!valid.length) return { status: "error", error: "Couldn't put outfits together this time. Try again." };
+    .filter((o) => o.check.ok);
+  // Drop repeats within the batch, then prefer outfits not suggested lately
+  // (unless every one is a repeat: an old outfit beats none).
+  const seen = new Set<string>();
+  const distinct = valid.filter((o) => {
+    if (!o.check.ok) return false;
+    const key = piecesKey(o.check.itemIds);
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+  const fresh = distinct.filter((o) => o.check.ok && !variety.recentKeys.has(piecesKey(o.check.itemIds)));
+  const chosen = (fresh.length ? fresh : distinct).slice(0, MAX_OUTFITS);
+  if (!chosen.length) return { status: "error", error: "Couldn't put outfits together this time. Try again." };
 
   if (refresh) {
     // Keep outfits they reacted to; replace the rest.
@@ -141,7 +168,7 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
   }
 
   // Ids are generated here so each outfit and its pieces are linked exactly.
-  const planned = valid.map((o, i) => ({
+  const planned = chosen.map((o, i) => ({
     id: crypto.randomUUID(),
     for_date: date,
     occasion,
@@ -155,33 +182,33 @@ export async function ensureOutfits(deps: Deps): Promise<EnsureResult> {
   if (insertError) return { status: "error", error: "Couldn't save today's outfits." };
 
   const pieces = planned.flatMap((row, i) => {
-    const check = valid[i].check;
+    const check = chosen[i].check;
     return check.ok ? check.itemIds.map((itemId, position) => ({ outfit_id: row.id, item_id: itemId, position })) : [];
   });
   const { error: piecesError } = await supabase.from("outfit_items").insert(pieces);
   if (piecesError) return { status: "error", error: "Couldn't save today's outfits." };
 
-  return { status: "ok", created: valid.length };
+  return { status: "ok", created: chosen.length };
 }
 
-async function describeHistory(
-  supabase: SupabaseClient,
+/** Each outfit's pieces, in one query. */
+async function loadPieces(supabase: SupabaseClient, outfitIds: string[]): Promise<Map<string, string[]>> {
+  const pieces = new Map<string, string[]>();
+  const ids = [...new Set(outfitIds)];
+  if (!ids.length) return pieces;
+  const { data } = await supabase.from("outfit_items").select("outfit_id, item_id").in("outfit_id", ids);
+  for (const row of data ?? []) pieces.set(row.outfit_id, [...(pieces.get(row.outfit_id) ?? []), row.item_id]);
+  return pieces;
+}
+
+function describeHistory(
   outfits: { id: string; title: string; status: string; feedback_reason: string | null }[],
+  piecesOf: Map<string, string[]>,
   idToRef: Map<string, string>,
-): Promise<string[]> {
-  if (!outfits.length) return [];
-  const { data } = await supabase
-    .from("outfit_items")
-    .select("outfit_id, item_id")
-    .in("outfit_id", outfits.map((o) => o.id));
-  const refs = new Map<string, string[]>();
-  for (const row of data ?? []) {
-    const ref = idToRef.get(row.item_id);
-    if (ref) refs.set(row.outfit_id, [...(refs.get(row.outfit_id) ?? []), ref]);
-  }
+): string[] {
   const verb: Record<string, string> = { liked: "Liked", disliked: "Disliked", worn: "Wore" };
   return outfits.map((o) => {
-    const pieces = refs.get(o.id)?.join(", ");
+    const pieces = (piecesOf.get(o.id) ?? []).map((id) => idToRef.get(id)).filter(Boolean).join(", ");
     const reason = o.feedback_reason ? `: "${o.feedback_reason}"` : "";
     return `- ${verb[o.status] ?? o.status} "${o.title}"${pieces ? ` (${pieces})` : ""}${reason}`;
   });
