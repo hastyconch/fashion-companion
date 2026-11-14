@@ -43,15 +43,36 @@ export async function setItemStatus(itemId: string, status: ItemStatus) {
 /** Deletes the item and both of its photos, then returns to the closet. */
 export async function deleteItem(itemId: string) {
   if (!isUuid(itemId)) return;
+  await removeItem(await createClient(), itemId);
+  redirect("/closet");
+}
+
+const DUPLICATE_ANSWERS = ["same", "similar", "different"] as const;
+
+/**
+ * Answers "Looks like you already own this". Same item deletes this (newer)
+ * one and opens the original; the other answers keep both.
+ */
+export async function answerDuplicate(itemId: string, answer: (typeof DUPLICATE_ANSWERS)[number]) {
+  if (!isUuid(itemId) || !DUPLICATE_ANSWERS.includes(answer)) return;
   const supabase = await createClient();
+  if (answer === "same") {
+    const original = await removeItem(supabase, itemId);
+    redirect(original ? `/closet/${original}` : "/closet");
+  }
+  await supabase.from("items").update({ duplicate_status: answer }).eq("id", itemId);
+  refresh();
+}
+
+/** Deletes an item's photos and row. Returns the item it was a duplicate of, if any. */
+async function removeItem(supabase: Awaited<ReturnType<typeof createClient>>, itemId: string) {
   const { data: item } = await supabase
     .from("items")
-    .select("image_path, thumb_path")
+    .select("image_path, thumb_path, duplicate_of")
     .eq("id", itemId)
     .maybeSingle();
-  if (item) {
-    await supabase.storage.from("closet").remove([item.image_path, item.thumb_path]);
-    await supabase.from("items").delete().eq("id", itemId);
-  }
-  redirect("/closet");
+  if (!item) return null;
+  await supabase.storage.from("closet").remove([item.image_path, item.thumb_path]);
+  await supabase.from("items").delete().eq("id", itemId);
+  return item.duplicate_of as string | null;
 }

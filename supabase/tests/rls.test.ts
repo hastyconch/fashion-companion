@@ -365,6 +365,52 @@ describe("style profile", () => {
   });
 });
 
+describe("duplicates", () => {
+  const ALICE_COPY = "55555555-5555-4555-8555-555555555555";
+  const ALICE_OTHER = "66666666-6666-4666-8666-666666666666";
+  const markDuplicate = (item: string, of: string) =>
+    db.query(
+      "update public.items set duplicate_of = $2, duplicate_status = 'pending', duplicate_reason = 'Same buttons.' where id = $1",
+      [item, of],
+    );
+
+  beforeAll(async () => {
+    await as(ALICE, () => addItem(ALICE_COPY, paths(ALICE, ALICE_COPY)));
+    await as(ALICE, () => addItem(ALICE_OTHER, paths(ALICE, ALICE_OTHER)));
+  });
+
+  it("lets users link a new item to one of their own and answer the question", async () => {
+    expect((await as(ALICE, () => markDuplicate(ALICE_COPY, ITEM_A))).affectedRows).toBe(1);
+    const answer = await as(ALICE, () =>
+      db.query("update public.items set duplicate_status = 'similar' where id = $1", [ALICE_COPY]),
+    );
+    expect(answer.affectedRows).toBe(1);
+  });
+
+  it("won't let an item point at someone else's item", async () => {
+    await expect(as(ALICE, () => markDuplicate(ALICE_OTHER, ITEM_B))).rejects.toThrow(/items_duplicate_of_fkey/);
+  });
+
+  it("won't let an item be a duplicate of itself, or take unknown answers", async () => {
+    await expect(as(ALICE, () => markDuplicate(ALICE_OTHER, ALICE_OTHER))).rejects.toThrow(/items_duplicate_not_self/);
+    await expect(
+      as(ALICE, () => db.query("update public.items set duplicate_status = 'maybe' where id = $1", [ALICE_OTHER])),
+    ).rejects.toThrow(/check constraint/);
+  });
+
+  it("clears the link, not the item, when the original is deleted", async () => {
+    await as(ALICE, () => markDuplicate(ALICE_OTHER, ALICE_COPY));
+    await as(ALICE, () => db.query("delete from public.items where id = $1", [ALICE_COPY]));
+    const { rows } = await as(ALICE, () =>
+      db.query<{ duplicate_of: string | null; user_id: string }>(
+        "select duplicate_of, user_id from public.items where id = $1",
+        [ALICE_OTHER],
+      ),
+    );
+    expect(rows).toEqual([{ duplicate_of: null, user_id: ALICE }]);
+  });
+});
+
 describe("outfits", () => {
   let aliceOutfit: string;
   let bobOutfit: string;

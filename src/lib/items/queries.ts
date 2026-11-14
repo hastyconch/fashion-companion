@@ -14,6 +14,8 @@ export type ClosetCard = {
   category: Category | null;
   status: ItemStatus;
   tag_status: TagStatus;
+  /** An unanswered "Looks like you already own this". */
+  possibleDuplicate: boolean;
   thumbUrl: string | null;
 };
 
@@ -37,9 +39,15 @@ export type ItemDetail = {
   wear_count: number;
   last_worn_at: string | null;
   created_at: string;
+  duplicate_of: string | null;
+  duplicate_status: "pending" | "similar" | "different" | null;
+  duplicate_reason: string | null;
   imageUrl: string | null;
   thumbUrl: string | null;
 };
+
+/** The item a new one might duplicate, when that question is still open. */
+export type DuplicateOf = { id: string; description: string | null; thumbUrl: string | null; reason: string };
 
 /** The closet grid for the signed-in user (RLS scopes rows to them). */
 export async function listClosetItems(
@@ -48,7 +56,7 @@ export async function listClosetItems(
 ): Promise<ClosetCard[]> {
   let query = supabase
     .from("items")
-    .select("id, thumb_path, description, category, status, tag_status")
+    .select("id, thumb_path, description, category, status, tag_status, duplicate_status")
     .order("created_at", { ascending: false })
     .limit(500);
 
@@ -59,7 +67,7 @@ export async function listClosetItems(
 
   if (filters.status === "laundry") query = query.eq("status", "laundry");
   else if (filters.status === "archived") query = query.eq("status", "archived");
-  else if (filters.status === "review") query = query.neq("tag_status", "done");
+  else if (filters.status === "review") query = query.or("tag_status.neq.done,duplicate_status.eq.pending");
   else query = query.neq("status", "archived");
 
   const { data, error } = await query;
@@ -70,6 +78,7 @@ export async function listClosetItems(
     category: item.category,
     status: item.status,
     tag_status: item.tag_status,
+    possibleDuplicate: item.duplicate_status === "pending",
     thumbUrl: photoUrl(item.thumb_path),
   }));
 }
@@ -78,13 +87,25 @@ export async function getItem(supabase: SupabaseClient, id: string): Promise<Ite
   const { data, error } = await supabase
     .from("items")
     .select(
-      "id, image_path, thumb_path, status, tag_status, category, subcategory, colors, pattern, material, formality, warmth, seasons, style_tags, description, brand, wear_count, last_worn_at, created_at",
+      "id, image_path, thumb_path, status, tag_status, category, subcategory, colors, pattern, material, formality, warmth, seasons, style_tags, description, brand, wear_count, last_worn_at, created_at, duplicate_of, duplicate_status, duplicate_reason",
     )
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
   return { ...data, imageUrl: photoUrl(data.image_path), thumbUrl: photoUrl(data.thumb_path) } as ItemDetail;
+}
+
+/** The open "already own this?" question for an item, if there is one. */
+export async function getOpenDuplicate(supabase: SupabaseClient, item: ItemDetail): Promise<DuplicateOf | null> {
+  if (item.duplicate_status !== "pending" || !item.duplicate_of) return null;
+  const { data } = await supabase
+    .from("items")
+    .select("id, description, thumb_path")
+    .eq("id", item.duplicate_of)
+    .maybeSingle();
+  if (!data) return null;
+  return { id: data.id, description: data.description, thumbUrl: photoUrl(data.thumb_path), reason: item.duplicate_reason ?? "" };
 }
 
 export async function countItems(supabase: SupabaseClient): Promise<number> {

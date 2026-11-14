@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, Shirt } from "lucide-react";
 
 import { isUuid } from "@/lib/items/ids";
-import { getItem } from "@/lib/items/queries";
+import { getItem, getOpenDuplicate } from "@/lib/items/queries";
 import { createClient } from "@/lib/supabase/server";
-import { DeleteItem, RetryTagging, StatusControl } from "./item-controls";
+import { DeleteItem, DuplicateQuestion, RetryTagging, StatusControl } from "./item-controls";
 import { TagEditor } from "./tag-editor";
 
 export const metadata: Metadata = { title: "Item" };
@@ -18,6 +18,7 @@ export default async function ItemPage({ params }: PageProps<"/closet/[id]">) {
   const supabase = await createClient();
   const item = await getItem(supabase, id);
   if (!item) notFound();
+  const duplicateOf = await getOpenDuplicate(supabase, item);
 
   const wornText =
     item.wear_count > 0
@@ -32,6 +33,9 @@ export default async function ItemPage({ params }: PageProps<"/closet/[id]">) {
       >
         <ChevronLeft className="size-4" /> Closet
       </Link>
+
+      {/* First on the page: it's the one thing to decide here. */}
+      {duplicateOf && <DuplicateQuestion itemId={item.id} photoUrl={item.thumbUrl} match={duplicateOf} />}
 
       <div className="grid gap-8 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] md:items-start">
         <div className="flex flex-col gap-4 md:sticky md:top-8">

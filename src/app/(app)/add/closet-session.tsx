@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, Camera, Check, ImagePlus, Loader2, RotateCcw, X } from "lucide-react";
 
+import { DuplicatePrompt, type DuplicateAnswer } from "@/components/closet/duplicate-prompt";
 import { Button } from "@/components/ui/button";
 import { preparePhoto } from "@/lib/images/resize";
 import { createLimiter } from "@/lib/limiter";
@@ -11,7 +12,9 @@ import { createClient } from "@/lib/supabase/client";
 import { CameraCapture, canUseInAppCamera, type CameraLatest } from "./camera-capture";
 import { cn } from "@/lib/utils";
 
-type Stage = "preparing" | "uploading" | "tagging" | "done" | "not_clothing" | "failed";
+type Stage = "preparing" | "uploading" | "tagging" | "done" | "duplicate" | "not_clothing" | "failed";
+
+type DuplicateMatch = { itemId: string; description: string | null; thumbUrl: string | null; reason: string };
 
 type Entry = {
   key: string;
@@ -23,6 +26,9 @@ type Entry = {
   saved: boolean;
   description?: string | null;
   message?: string;
+  /** Set when the tagger thinks this is something already in the closet. */
+  duplicate?: DuplicateMatch;
+  answering?: boolean;
 };
 
 // Resizing is CPU-heavy on phones, uploads are network-heavy, tagging waits on AI.
@@ -52,6 +58,8 @@ export function ClosetSession({ userId }: { userId: string }) {
         const body = await res.json().catch(() => null);
         if (res.status === 401) {
           patch(entry.key, { stage: "failed", message: "You were signed out. Sign in and retry." });
+        } else if (body?.status === "done" && body.duplicate) {
+          patch(entry.key, { stage: "duplicate", description: body.description, duplicate: body.duplicate });
         } else if (body?.status === "done") {
           patch(entry.key, { stage: "done", description: body.description });
         } else if (body?.status === "not_clothing") {
@@ -147,6 +155,21 @@ export function ClosetSession({ userId }: { userId: string }) {
     [supabase, userId],
   );
 
+  const answerDuplicate = useCallback(
+    async (entry: Entry, answer: DuplicateAnswer) => {
+      patch(entry.key, { answering: true, message: undefined });
+      if (answer === "same") return removeEntry(entry);
+      const { error } = await supabase.from("items").update({ duplicate_status: answer }).eq("id", entry.itemId);
+      patch(
+        entry.key,
+        error
+          ? { answering: false, message: "Couldn't save that. Try again." }
+          : { answering: false, stage: "done", duplicate: undefined },
+      );
+    },
+    [patch, removeEntry, supabase],
+  );
+
   const busy = entries.some((e) => BUSY.includes(e.stage));
 
   // Warn before leaving while photos are still uploading or being tagged.
@@ -180,7 +203,7 @@ export function ClosetSession({ userId }: { userId: string }) {
     : null;
 
   const doneCount = entries.filter((e) => e.stage === "done").length;
-  const reviewCount = entries.filter((e) => e.stage === "not_clothing" || e.stage === "failed").length;
+  const reviewCount = entries.filter((e) => ["not_clothing", "failed", "duplicate"].includes(e.stage)).length;
   const workingCount = entries.filter((e) => BUSY.includes(e.stage)).length;
 
   return (
@@ -270,6 +293,7 @@ export function ClosetSession({ userId }: { userId: string }) {
                 entry={entry}
                 onRetry={() => void processEntry(entry)}
                 onRemove={() => void removeEntry(entry)}
+                onAnswer={(answer) => void answerDuplicate(entry, answer)}
               />
             ))}
           </ul>
@@ -284,6 +308,7 @@ const STAGE_TEXT: Record<Stage, string> = {
   uploading: "Uploading…",
   tagging: "Tagging…",
   done: "Added",
+  duplicate: "Added",
   not_clothing: "This doesn't look like clothing",
   failed: "Something went wrong",
 };
@@ -292,54 +317,66 @@ function EntryRow({
   entry,
   onRetry,
   onRemove,
+  onAnswer,
 }: {
   entry: Entry;
   onRetry: () => void;
   onRemove: () => void;
+  onAnswer: (answer: DuplicateAnswer) => void;
 }) {
   const working = BUSY.includes(entry.stage);
-  const title =
-    entry.stage === "done" ? (entry.description ?? "Added") : STAGE_TEXT[entry.stage];
+  const added = entry.stage === "done" || entry.stage === "duplicate";
+  const title = added ? (entry.description ?? "Added") : STAGE_TEXT[entry.stage];
 
   return (
-    <li className="flex items-center gap-3 px-3 py-3">
-      {/* Local preview of the photo just taken; it isn't uploaded yet. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={entry.previewUrl}
-        alt=""
-        className="size-14 shrink-0 rounded-xl bg-muted object-cover"
-      />
-      <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-sm", entry.stage === "done" && "font-medium")}>{title}</p>
-        {entry.message && <p className="text-xs text-muted-foreground">{entry.message}</p>}
-        {entry.stage === "not_clothing" && entry.saved && (
-          <p className="text-xs text-muted-foreground">
-            <Link href={`/closet/${entry.itemId}`} className="underline underline-offset-2">
-              Keep it and add the details
-            </Link>
-          </p>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {working && (
-          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Working" />
-        )}
-        {entry.stage === "done" && <Check className="size-5 text-accent" aria-label="Done" />}
-        {entry.stage === "failed" && (
-          <>
-            <AlertCircle className="size-5 text-destructive" aria-hidden />
-            <Button variant="ghost" size="icon" onClick={onRetry} aria-label="Retry">
-              <RotateCcw />
+    <li className="flex flex-col gap-3 px-3 py-3">
+      <div className="flex items-center gap-3">
+        {/* Local preview of the photo just taken; it isn't uploaded yet. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={entry.previewUrl}
+          alt=""
+          className="size-14 shrink-0 rounded-xl bg-muted object-cover"
+        />
+        <div className="min-w-0 flex-1">
+          <p className={cn("truncate text-sm", added && "font-medium")}>{title}</p>
+          {entry.message && <p className="text-xs text-muted-foreground">{entry.message}</p>}
+          {entry.stage === "not_clothing" && entry.saved && (
+            <p className="text-xs text-muted-foreground">
+              <Link href={`/closet/${entry.itemId}`} className="underline underline-offset-2">
+                Keep it and add the details
+              </Link>
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {working && (
+            <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Working" />
+          )}
+          {entry.stage === "done" && <Check className="size-5 text-accent" aria-label="Done" />}
+          {entry.stage === "failed" && (
+            <>
+              <AlertCircle className="size-5 text-destructive" aria-hidden />
+              <Button variant="ghost" size="icon" onClick={onRetry} aria-label="Retry">
+                <RotateCcw />
+              </Button>
+            </>
+          )}
+          {(entry.stage === "failed" || entry.stage === "not_clothing") && (
+            <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Remove">
+              <X />
             </Button>
-          </>
-        )}
-        {(entry.stage === "failed" || entry.stage === "not_clothing") && (
-          <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Remove">
-            <X />
-          </Button>
-        )}
+          )}
+        </div>
       </div>
+      {entry.stage === "duplicate" && entry.duplicate && (
+        <DuplicatePrompt
+          newPhotoUrl={entry.previewUrl}
+          match={entry.duplicate}
+          onAnswer={onAnswer}
+          busy={entry.answering}
+        />
+      )}
     </li>
   );
 }

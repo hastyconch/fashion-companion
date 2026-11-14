@@ -41,8 +41,10 @@ export function ItemGrid({ items }: { items: ClosetCard[] }) {
 
 function Badge({ item }: { item: ClosetCard }) {
   let label: string | null = null;
+  const attention = item.tag_status !== "done" || item.possibleDuplicate;
   if (item.tag_status === "pending") label = "Tagging…";
   else if (item.tag_status !== "done") label = "Needs a look";
+  else if (item.possibleDuplicate) label = "Duplicate?";
   else if (item.status === "laundry") label = "Laundry";
   if (!label) return null;
 
@@ -50,9 +52,7 @@ function Badge({ item }: { item: ClosetCard }) {
     <span
       className={cn(
         "absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium backdrop-blur",
-        item.tag_status === "done"
-          ? "bg-background/85 text-foreground"
-          : "bg-accent/90 text-accent-foreground",
+        attention ? "bg-accent/90 text-accent-foreground" : "bg-background/85 text-foreground",
       )}
     >
       {label}
