@@ -136,7 +136,11 @@ Each milestone ends with a PR for you to review and test on your phone.
   camera reliably on iOS/Android; build a custom `getUserMedia` camera with a framing guide later). Client resize →
   upload to private bucket → `tagItem` → editable tags. Closet grid + filters + item detail. Batch session mode.
   *Done when:* you can add 20 real items in under 10 minutes.
-- **M2 Duplicates**: compute pHash client-side, SQL candidate query, `checkDuplicate`, 3-choice UX.
+- **M2 Duplicates** ✅ built: after tagging, a tag query picks up to 6 lookalikes (same or related category, a shared
+  color), and only then `checkDuplicate` compares thumbnails. A likely match becomes a question on the new item:
+  Same item (deletes it) / Keep both / Different, on the add screen and the item page, with a "Duplicate?" badge
+  in the closet. Was: pHash. Dropped because a perceptual hash matches near-identical *images*, and a re-photographed
+  garment (new angle, folds, light) isn't one. Costs ~1¢ per check, and nothing when there's no lookalike.
   *Done when:* re-photographing an owned item is flagged, and a different shirt of the same color is not.
 - **M3 Profile & onboarding** ✅ built: an 8-question style quiz at `/style` (name, occasions, styles, fit,
   colors, comfort and adventurousness, notes, location), an AI-written style brief you can edit, and weather

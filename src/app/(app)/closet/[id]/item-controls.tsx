@@ -4,11 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw, Trash2 } from "lucide-react";
 
+import { DuplicatePrompt } from "@/components/closet/duplicate-prompt";
 import { Button } from "@/components/ui/button";
-import type { TagStatus } from "@/lib/items/queries";
+import type { DuplicateOf, TagStatus } from "@/lib/items/queries";
 import type { ItemStatus } from "@/lib/items/vocabulary";
 import { cn } from "@/lib/utils";
-import { deleteItem, setItemStatus } from "./actions";
+import { answerDuplicate, deleteItem, setItemStatus } from "./actions";
 
 const STATUS_OPTIONS: { value: ItemStatus; label: string }[] = [
   { value: "active", label: "In closet" },
@@ -121,5 +122,25 @@ export function DeleteItem({ itemId }: { itemId: string }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+export function DuplicateQuestion({
+  itemId,
+  photoUrl,
+  match,
+}: {
+  itemId: string;
+  photoUrl: string | null;
+  match: DuplicateOf;
+}) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <DuplicatePrompt
+      newPhotoUrl={photoUrl}
+      match={match}
+      busy={pending}
+      onAnswer={(answer) => startTransition(() => answerDuplicate(itemId, answer))}
+    />
   );
 }

@@ -41,6 +41,9 @@ Product plan and milestones: `docs/PLAN.md`. Setup: `README.md`.
 - Style quiz answers live in `profiles.preferences` and are validated by `PreferencesSchema`
   (`src/lib/profile/preferences.ts`). The AI-written brief is `profiles.style_memo`; M4's outfit
   suggestions should read both.
+- **Duplicates** (`src/lib/items/duplicate-flow.ts`) run after tagging in the same request and never fail it.
+  `items.duplicate_of` is a same-owner foreign key `(user_id, duplicate_of)`, so it can't point at another
+  user's item.
 - **Never trust IDs from the model.** Give it short refs (`closetForAi` in `src/lib/outfits/closet.ts`),
   map them back server-side, and run every outfit through `checkOutfit` (`src/lib/outfits/validate.ts`).
 - Mobile first: 44px touch targets, `text-base` inputs (stops iOS zoom), and safe-area
