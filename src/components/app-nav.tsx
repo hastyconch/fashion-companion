@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -29,15 +30,52 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
+/** The on-screen keyboard takes at least this much of the window when it's up. */
+const KEYBOARD_MIN_PX = 150;
+
+export function isKeyboardOpen(windowHeight: number, visibleHeight: number) {
+  return windowHeight - visibleHeight > KEYBOARD_MIN_PX;
+}
+
+/**
+ * Whether the on-screen keyboard is up. When it closes, nudges the page so the
+ * browser lays out fixed bars again: on iOS (seen in the installed app) a
+ * bottom bar otherwise stays raised by the keyboard's height, stuck mid-screen.
+ */
+function useKeyboardOpen() {
+  const [open, setOpen] = useState(false);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => {
+      const now = isKeyboardOpen(window.innerHeight, viewport.height);
+      if (wasOpen.current && !now) {
+        requestAnimationFrame(() => window.scrollTo(window.scrollX, window.scrollY));
+      }
+      wasOpen.current = now;
+      setOpen(now);
+    };
+    viewport.addEventListener("resize", update);
+    return () => viewport.removeEventListener("resize", update);
+  }, []);
+  return open;
+}
+
 /** Bottom tab bar on phones, left sidebar from the md breakpoint up. */
 export function AppNav() {
   const pathname = usePathname();
+  // Hidden while typing, like native tab bars: it shouldn't ride on top of the keyboard.
+  const keyboardOpen = useKeyboardOpen();
 
   return (
     <>
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden",
+          keyboardOpen && "hidden",
+        )}
       >
         <ul className="mx-auto grid h-16 max-w-md grid-cols-5 items-center">
           {LEFT.map((item) => (
